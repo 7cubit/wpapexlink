@@ -1,31 +1,27 @@
 {
-  "name": "apx/wp-neurolink",
-  "description": "The Neural Architecture Engine for WordPress.",
-  "type": "wordpress-plugin",
-  "license": "GPL-2.0-or-later",
-  "authors": [
-    {
-      "name": "Lead Architect",
-      "role": "ARCH"
+    "name": "neurolink/wp-neurolink",
+    "description": "The Neural Architecture Engine for WordPress.",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "autoload": {
+        "psr-4": {
+            "NeuroLink\\WP\\": "src/"
+        }
+    },
+    "require": {
+        "php": ">=8.1",
+        "guzzlehttp/guzzle": "^7.8",
+        "woocommerce/action-scheduler": "^3.7",
+        "masterminds/html5": "^2.8",
+        "monolog/monolog": "^3.5"
+    },
+    "require-dev": {
+        "lucatume/wp-browser": "^4.0",
+        "phpunit/phpunit": "^10.0"
+    },
+    "config": {
+        "allow-plugins": {
+            "composer/installers": true
+        }
     }
-  ],
-  "autoload": {
-    "psr-4": {
-      "WPNeuroLink\\": "src/"
-    }
-  },
-  "require": {
-    "php": ">=8.1",
-    "guzzlehttp/guzzle": "^7.8",
-    "woocommerce/action-scheduler": "^3.7"
-  },
-  "require-dev": {
-    "lucatume/wp-browser": "^4.0",
-    "phpunit/phpunit": "^10.0"
-  },
-  "config": {
-    "allow-plugins": {
-      "composer/installers": true
-    }
-  }
 }

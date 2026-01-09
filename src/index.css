@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.wp-neurolink-admin {
+    /* Custom base styles for our admin shell */
+    min-height: calc(100vh - 100px);
+}

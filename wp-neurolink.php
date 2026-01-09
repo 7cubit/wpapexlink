@@ -13,6 +13,8 @@
  * Domain Path:       /languages
  */
 
+namespace NeuroLink\WP;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -28,24 +30,98 @@ if ( file_exists( __DIR__ . '/vendor/autoload.php' ) ) {
 final class WP_NeuroLink {
 
 	/**
-	 * Version constant.
+	 * Plugin version.
 	 */
 	const VERSION = '0.1.0';
 
 	/**
-	 * Initialize the plugin.
+	 * Singleton instance.
+	 *
+	 * @var WP_NeuroLink|null
 	 */
-	public static function init() {
-		// Bootstrap Core
-		self::bootstrap();
+	private static $instance = null;
+
+	/**
+	 * Get the instance.
+	 *
+	 * @return WP_NeuroLink
+	 */
+	public static function instance()
+	{
+		if (is_null(self::$instance)) {
+			self::$instance = new self();
+		}
+		return self::$instance;
 	}
 
 	/**
-	 * Bootstrap the core components.
+	 * Constructor.
 	 */
-	private static function bootstrap() {
-		// Initialization logic will go here in following phases
+	private function __construct()
+	{
+		$this->define_constants();
+		$this->hooks();
+	}
+
+	/**
+	 * Define constants.
+	 */
+	private function define_constants()
+	{
+		define('WP_NEUROLINK_PATH', plugin_dir_path(__FILE__));
+		define('WP_NEUROLINK_URL', plugin_dir_url(__FILE__));
+	}
+
+	/**
+	 * Setup hooks.
+	 */
+	private function hooks()
+	{
+		add_action('plugins_loaded', [$this, 'bootstrap']);
+
+		register_activation_hook(__FILE__, [Core\ActivationHook::class, 'activate']);
+	}
+
+	/**
+	 * Bootstrap the core services.
+	 */
+	public function bootstrap()
+	{
+		// Logger
+		/** @var Core\Logger $logger */
+		$this->logger = new Core\Logger();
+
+		// Feature Flags
+		/** @var Core\FeatureFlags $flags */
+		$this->flags = new Core\FeatureFlags();
+
+		// Admin Page
+		if (is_admin()) {
+			new Admin\AdminPage();
+		}
+	}
+
+	/**
+	 * Prevent cloning.
+	 */
+	private function __clone()
+	{
+	}
+
+	/**
+	 * Prevent unserializing.
+	 */
+	public function __wakeup()
+	{
 	}
 }
 
-add_action( 'plugins_loaded', [ 'WP_NeuroLink', 'init' ] );
+/**
+ * Initialize the plugin.
+ */
+function wp_neurolink()
+{
+	return WP_NeuroLink::instance();
+}
+
+wp_neurolink();
