@@ -1,0 +1,1 @@
+{"version":2,"defects":{"NeuroLink\\WP\\Tests\\Unit\\ContentParserTest::test_extract_text":8},"times":{"NeuroLink\\WP\\Tests\\Unit\\ContentParserTest::test_strip_noise":0.031,"NeuroLink\\WP\\Tests\\Unit\\ContentParserTest::test_extract_text":0.01}}

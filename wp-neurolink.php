@@ -99,6 +99,9 @@ final class WP_NeuroLink {
 		if (is_admin()) {
 			new Admin\AdminPage();
 		}
+
+		// Indexer Engine
+		new Engine\Indexer\Indexer();
 	}
 
 	/**
