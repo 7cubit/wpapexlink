@@ -1,6 +1,6 @@
 <?php
 
-namespace NeuroLink\WP\Database\Repositories;
+namespace ApexLink\WP\Database\Repositories;
 
 /**
  * Base Repository class.
@@ -30,8 +30,18 @@ abstract class BaseRepository {
 		global $wpdb;
 		$this->db = $wpdb;
 
-		$tables = \NeuroLink\WP\Database\SchemaManager::get_tables();
+		$tables = \ApexLink\WP\Database\SchemaManager::get_tables();
 		$this->table_name = $tables[ $table_key ] ?? '';
+	}
+
+	/**
+	 * Get the table name.
+	 *
+	 * @return string
+	 */
+	public function get_table_name()
+	{
+		return $this->table_name;
 	}
 
 	/**

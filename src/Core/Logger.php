@@ -1,6 +1,6 @@
 <?php
 
-namespace NeuroLink\WP\Core;
+namespace ApexLink\WP\Core;
 
 use Monolog\Logger as Monolog;
 use Monolog\Handler\StreamHandler;
@@ -22,13 +22,13 @@ class Logger {
 	 */
 	public function __construct() {
 		$upload_dir = wp_upload_dir();
-		$log_dir    = $upload_dir['basedir'] . '/neurolink-logs';
+		$log_dir    = $upload_dir['basedir'] . '/apexlink-logs';
 
 		if ( ! file_exists( $log_dir ) ) {
 			wp_mkdir_p( $log_dir );
 		}
 
-		$this->log = new Monolog( 'neurolink' );
+		$this->log = new Monolog( 'apexlink' );
 		$this->log->pushHandler( new StreamHandler( $log_dir . '/debug.log', Monolog::DEBUG ) );
 	}
 

@@ -1,6 +1,6 @@
 <?php
 
-namespace NeuroLink\WP\Engine\Analysis;
+namespace ApexLink\WP\Engine\Analysis;
 
 use Masterminds\HTML5;
 
@@ -39,14 +39,48 @@ class ContentParser {
 	public function parse( \WP_Post $post ) {
 		$content = $post->post_content;
 
-		// Support for Elementor
+		// 1. Elementor
 		if ( $this->is_elementor_post( $post->ID ) ) {
-			$content = $this->get_elementor_content( $post->ID );
+			$elementor_content = $this->get_elementor_content($post->ID);
+			if (!empty($elementor_content)) {
+				$content .= "\n" . $elementor_content;
+			}
 		}
 
-		// Support for Divi
-		if ( $this->is_divi_post( $post->ID ) ) {
-			// Divi usually uses post_content with shortcodes
+		// 2. ACF Fields (Text and WYSIWYG)
+		if (function_exists('get_field_objects')) {
+			$fields = get_field_objects($post->ID);
+			if ($fields) {
+				foreach ($fields as $field) {
+					if (in_array($field['type'], ['text', 'textarea', 'wysiwyg'])) {
+						if (!empty($field['value'])) {
+							$content .= "\n" . (is_array($field['value']) ? implode(' ', $field['value']) : $field['value']);
+						}
+					}
+				}
+			}
+		}
+
+		// 3. WooCommerce
+		if ('product' === $post->post_type) {
+			$product = wc_get_product($post->ID);
+			if ($product) {
+				$content .= "\n" . $product->get_short_description();
+			}
+		}
+
+		// 4. Bricks Builder
+		if ('bricks' === get_post_meta($post->ID, '_bricks_editor_mode', true)) {
+			$bricks_data = get_post_meta($post->ID, '_bricks_page_content_2', true);
+			if ($bricks_data) {
+				$content .= "\n" . $this->parse_bricks_data($bricks_data);
+			}
+		}
+
+		// 5. Oxygen Builder
+		$oxygen_json = get_post_meta($post->ID, 'ct_builder_json', true);
+		if (!empty($oxygen_json)) {
+			$content .= "\n" . $this->parse_json_builder_data($oxygen_json);
 		}
 
 		$content = $this->strip_shortcodes( $content );
@@ -62,6 +96,7 @@ class ContentParser {
 	 * @return string
 	 */
 	public function strip_shortcodes( string $text ) {
+		// Custom handling for builders that use specific shortcode tags
 		return strip_shortcodes( $text );
 	}
 
@@ -72,22 +107,44 @@ class ContentParser {
 	 * @return string
 	 */
 	public function strip_noise( string $content ) {
-		if ( empty( $content ) ) {
+		if (empty(trim($content))) {
 			return '';
 		}
 
-		// Load HTML safely (surround with body to avoid fragment issues)
-		$dom = $this->html->loadHTML( '<body>' . $content . '</body>' );
+		// Load HTML safely
+		$dom = @$this->html->loadHTML('<body>' . $content . '</body>');
 
+		// 1. Remove specific tags
 		foreach ( $this->excluded_tags as $tag ) {
 			$nodes = $dom->getElementsByTagName( $tag );
-			while ( $nodes->length > 0 ) {
-				$node = $nodes->item( 0 );
-				$node->parentNode->removeChild( $node );
+			$to_remove = [];
+			foreach ($nodes as $node) {
+				$to_remove[] = $node;
+			}
+			foreach ($to_remove as $node) {
+				if ($node->parentNode)
+					$node->parentNode->removeChild($node);
 			}
 		}
 
-		return $dom->saveHTML();
+		// 2. Remove ignored classes
+		$ignored_classes = get_option('apexlink_ignore_classes', '');
+		if (!empty($ignored_classes)) {
+			$classes = array_map('trim', explode(',', $ignored_classes));
+			$xpath = new \DOMXPath($dom);
+			foreach ($classes as $class) {
+				if (empty($class))
+					continue;
+				$nodes = $xpath->query("//*[contains(concat(' ', normalize-space(@class), ' '), ' $class ')]");
+				foreach ($nodes as $node) {
+					if ($node->parentNode)
+						$node->parentNode->removeChild($node);
+				}
+			}
+		}
+
+		$body = $dom->getElementsByTagName('body')->item(0);
+		return $body ? $dom->saveHTML($body) : '';
 	}
 
 	/**
@@ -97,7 +154,7 @@ class ContentParser {
 	 * @return string
 	 */
 	public function extract_text( string $html ) {
-		$text = wp_strip_all_tags( $html );
+		$text = function_exists('wp_strip_all_tags') ? wp_strip_all_tags($html) : strip_tags($html);
 		
 		// Remove multiple spaces/newlines
 		$text = preg_replace( '/\s+/', ' ', $text );
@@ -117,27 +174,59 @@ class ContentParser {
 
 	/**
 	 * Get Elementor content.
-	 *
-	 * @param int $post_id
-	 * @return string
 	 */
 	private function get_elementor_content( int $post_id ) {
-		if ( ! class_exists( '\Elementor\Plugin' ) ) {
+		if (!class_exists('\Elementor\Plugin'))
 			return '';
-		}
-
-		// This might trigger heavy processing, better to use raw data if possible
-		// but for indexing, we want what the user sees.
+		// standard elementor content
 		return \Elementor\Plugin::$instance->frontend->get_builder_content_for_display( $post_id );
 	}
 
 	/**
 	 * Check if post is Divi.
-	 *
-	 * @param int $post_id
-	 * @return bool
 	 */
 	private function is_divi_post( int $post_id ) {
 		return 'on' === get_post_meta( $post_id, '_et_pb_use_builder', true );
+	}
+
+	/**
+	 * Parse JSON from Oxygen/etc.
+	 */
+	private function parse_json_builder_data($json)
+	{
+		if (is_string($json)) {
+			$json = json_decode($json, true);
+		}
+		if (!is_array($json))
+			return '';
+
+		$text = '';
+		array_walk_recursive($json, function ($value, $key) use (&$text) {
+			if (in_array($key, ['text', 'content', 'title', 'heading']) && is_string($value)) {
+				$text .= ' ' . $value;
+			}
+		});
+
+		return $text;
+	}
+
+	/**
+	 * Parse Bricks data.
+	 */
+	private function parse_bricks_data($data)
+	{
+		if (!is_array($data))
+			return '';
+
+		$text = '';
+		foreach ($data as $element) {
+			if (!empty($element['settings']['text']))
+				$text .= ' ' . $element['settings']['text'];
+			if (!empty($element['settings']['title']))
+				$text .= ' ' . $element['settings']['title'];
+			if (!empty($element['children']))
+				$text .= ' ' . $this->parse_bricks_data($element['children']);
+		}
+		return $text;
 	}
 }

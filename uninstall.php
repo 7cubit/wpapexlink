@@ -2,7 +2,7 @@
 /**
  * WP NeuroLink Uninstall.
  *
- * @package NeuroLink\WP
+ * @package ApexLink\WP
  */
 
 if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
@@ -11,7 +11,7 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 
 require_once __DIR__ . '/vendor/autoload.php';
 
-use NeuroLink\WP\Database\SchemaManager;
+use ApexLink\WP\Database\SchemaManager;
 
 /**
  * Drop custom tables during uninstallation.

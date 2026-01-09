@@ -1,6 +1,6 @@
 <?php
 
-namespace NeuroLink\WP\Database\Repositories;
+namespace ApexLink\WP\Database\Repositories;
 
 /**
  * Repository for Semantic Index.
@@ -59,5 +59,27 @@ class IndexRepository extends BaseRepository {
 				$limit
 			)
 		);
+	}
+
+	/**
+	 * Get token data for a specific post.
+	 *
+	 * @param int $post_id
+	 * @return array
+	 */
+	public function get_token_data(int $post_id)
+	{
+		$data = $this->db->get_var(
+			$this->db->prepare(
+				"SELECT token_data FROM {$this->table_name} WHERE post_id = %d",
+				$post_id
+			)
+		);
+
+		if (!$data) {
+			return [];
+		}
+
+		return json_decode($data, true) ?: [];
 	}
 }

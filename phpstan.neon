@@ -1,0 +1,17 @@
+includes:
+    - vendor/szepeviktor/phpstan-wordpress/extension.neon
+
+parameters:
+    level: 6
+    paths:
+        - src/
+        - create-ai-posts.php
+    
+    # Ignore WordPress core constants and functions
+    bootstrapFiles:
+        - %currentWorkingDirectory%/../../wp-load.php
+    
+    # Additional ignored errors
+    ignoreErrors:
+        - '#Call to unknown function#'
+        - '#Use of undefined constant#'

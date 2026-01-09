@@ -2,7 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
-.wp-neurolink-admin {
+.wp-apexlink-admin {
     /* Custom base styles for our admin shell */
     min-height: calc(100vh - 100px);
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+.shimmer {
+    background: linear-gradient(90deg, #f3f4f6 25%, #ffffff 50%, #f3f4f6 75%);
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite linear;
+}
+
+.dark .shimmer {
+    background: linear-gradient(90deg, #1f2937 25%, #374151 50%, #1f2937 75%);
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite linear;
+}
+
+.neural-glow {
+    filter: drop-shadow(0 0 10px rgba(99, 102, 241, 0.4));
 }

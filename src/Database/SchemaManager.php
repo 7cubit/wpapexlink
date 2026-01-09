@@ -1,6 +1,6 @@
 <?php
 
-namespace NeuroLink\WP\Database;
+namespace ApexLink\WP\Database;
 
 /**
  * Manage custom database tables.
@@ -10,7 +10,7 @@ class SchemaManager {
 	/**
 	 * Schema version.
 	 */
-	const VERSION = '1.0.0';
+	const VERSION = '1.7.0';
 
 	/**
 	 * Get table names.
@@ -21,9 +21,12 @@ class SchemaManager {
 		global $wpdb;
 
 		return [
-			'index' => $wpdb->prefix . 'neurolink_index',
-			'links' => $wpdb->prefix . 'neurolink_links',
-			'stats' => $wpdb->prefix . 'neurolink_stats',
+			'index' => $wpdb->prefix . 'apexlink_index',
+			'links' => $wpdb->prefix . 'apexlink_links',
+			'stats' => $wpdb->prefix . 'apexlink_stats',
+			'suggestions' => $wpdb->prefix . 'apexlink_suggestions',
+			'autopilot_rules' => $wpdb->prefix . 'apexlink_autopilot_rules',
+			'autopilot_logs' => $wpdb->prefix . 'apexlink_autopilot_logs',
 		];
 	}
 
@@ -41,6 +44,7 @@ class SchemaManager {
 			id bigint(20) NOT NULL AUTO_INCREMENT,
 			post_id bigint(20) NOT NULL,
 			stemmed_content longtext NOT NULL,
+			token_data longtext NOT NULL,
 			content_hash varchar(64) NOT NULL,
 			indexed_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
 			PRIMARY KEY  (id),
@@ -55,11 +59,15 @@ class SchemaManager {
 			source_id bigint(20) NOT NULL,
 			target_id bigint(20) NOT NULL,
 			anchor text NOT NULL,
-			link_type varchar(50) DEFAULT 'semantic' NOT NULL,
+			url text NOT NULL,
+			link_type varchar(50) DEFAULT 'internal' NOT NULL,
+			is_nofollow tinyint(1) DEFAULT 0 NOT NULL,
 			created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
 			PRIMARY KEY  (id),
 			KEY source_target (source_id, target_id),
-			KEY link_type (link_type)
+			KEY link_type (link_type),
+			KEY source_type (source_id, link_type),
+			KEY target_type (target_id, link_type)
 		) $charset_collate ENGINE=InnoDB;";
 
 		// Stats Table
@@ -71,14 +79,63 @@ class SchemaManager {
 			outbound_count int(11) DEFAULT 0 NOT NULL,
 			last_updated datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP NOT NULL,
 			PRIMARY KEY  (id),
-			UNIQUE KEY post_id (post_id)
+			UNIQUE KEY post_id (post_id),
+			KEY pagerank (pagerank_score)
+		) $charset_collate ENGINE=InnoDB;";
+
+		// Suggestions Table
+		$sql_suggestions = "CREATE TABLE {$tables['suggestions']} (
+			id bigint(20) NOT NULL AUTO_INCREMENT,
+			source_id bigint(20) NOT NULL,
+			target_id bigint(20) NOT NULL,
+			anchor text NOT NULL,
+			context text NOT NULL,
+			score decimal(5,2) DEFAULT 0.00 NOT NULL,
+			status varchar(20) DEFAULT 'pending' NOT NULL,
+			suggestion_type varchar(50) DEFAULT 'ai' NOT NULL,
+			is_bridge tinyint(1) DEFAULT 0 NOT NULL,
+			generated_bridge text DEFAULT NULL,
+			created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+			PRIMARY KEY  (id),
+			KEY source_target (source_id, target_id),
+			KEY status (status),
+			KEY suggestion_type (suggestion_type)
+		) $charset_collate ENGINE=InnoDB;";
+
+		// Autopilot Rules Table
+		$sql_autopilot_rules = "CREATE TABLE {$tables['autopilot_rules']} (
+			id bigint(20) NOT NULL AUTO_INCREMENT,
+			keyword varchar(255) NOT NULL,
+			target_id bigint(20) NOT NULL,
+			match_type varchar(50) DEFAULT 'exact' NOT NULL,
+			status varchar(20) DEFAULT 'active' NOT NULL,
+			created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+			PRIMARY KEY  (id),
+			KEY status (status)
+		) $charset_collate ENGINE=InnoDB;";
+
+		// Autopilot Logs Table
+		$sql_autopilot_logs = "CREATE TABLE {$tables['autopilot_logs']} (
+			id bigint(20) NOT NULL AUTO_INCREMENT,
+			batch_id varchar(64) NOT NULL,
+			source_id bigint(20) NOT NULL,
+			target_id bigint(20) NOT NULL,
+			anchor text NOT NULL,
+			action varchar(20) DEFAULT 'inserted' NOT NULL,
+			created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+			PRIMARY KEY  (id),
+			KEY batch_id (batch_id),
+			KEY source_id (source_id)
 		) $charset_collate ENGINE=InnoDB;";
 
 		dbDelta( $sql_index );
 		dbDelta( $sql_links );
 		dbDelta( $sql_stats );
+		dbDelta($sql_suggestions);
+		dbDelta($sql_autopilot_rules);
+		dbDelta($sql_autopilot_logs);
 
-		update_option( 'wp_neurolink_db_version', self::VERSION );
+		update_option('wp_apexlink_db_version', self::VERSION);
 	}
 
 	/**
@@ -112,6 +169,6 @@ class SchemaManager {
 			$wpdb->query( "DROP TABLE IF EXISTS {$table}" );
 		}
 
-		delete_option( 'wp_neurolink_db_version' );
+		delete_option('wp_apexlink_db_version');
 	}
 }

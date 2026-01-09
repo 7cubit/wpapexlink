@@ -4,7 +4,8 @@ module.exports = {
     "./src/**/*.{js,jsx,ts,tsx}",
     "./templates/**/*.php",
   ],
-  important: '.wp-neurolink-admin',
+  darkMode: 'class',
+  important: '.wp-apexlink-admin',
   theme: {
     extend: {
       colors: {

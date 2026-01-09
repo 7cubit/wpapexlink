@@ -1,9 +1,12 @@
 <?php
 
-namespace NeuroLink\WP\Engine\Indexer;
+namespace ApexLink\WP\Engine\Indexer;
 
-use NeuroLink\WP\Database\Repositories\IndexRepository;
-use NeuroLink\WP\Engine\Analysis\ContentParser;
+use ApexLink\WP\Database\Repositories\IndexRepository;
+use ApexLink\WP\Database\Repositories\LinkRepository;
+use ApexLink\WP\Engine\Analysis\ContentParser;
+use ApexLink\WP\Engine\Analysis\SemanticAnalyzer;
+use ApexLink\WP\Engine\Analysis\LinkExtractor;
 
 /**
  * Handle content indexing orchestration.
@@ -25,11 +28,35 @@ class Indexer {
 	private $parser;
 
 	/**
+	 * Analyzer instance.
+	 *
+	 * @var SemanticAnalyzer
+	 */
+	private $analyzer;
+
+	/**
+	 * Link extractor instance.
+	 *
+	 * @var LinkExtractor
+	 */
+	private $link_extractor;
+
+	/**
+	 * Link repository instance.
+	 *
+	 * @var LinkRepository
+	 */
+	private $link_repository;
+
+	/**
 	 * Constructor.
 	 */
 	public function __construct() {
 		$this->repository = new IndexRepository();
-		$this->parser     = new ContentParser();
+		$this->link_repository = new LinkRepository();
+		$this->parser = new ContentParser();
+		$this->analyzer = new SemanticAnalyzer();
+		$this->link_extractor = new LinkExtractor();
 		
 		$this->hooks();
 	}
@@ -39,7 +66,7 @@ class Indexer {
 	 */
 	private function hooks() {
 		add_action( 'save_post', [ $this, 'on_save_post' ], 10, 3 );
-		add_action( 'wp_neurolink_index_post', [ $this, 'index_post' ] );
+		add_action('wp_apexlink_index_post', [$this, 'index_post']);
 	}
 
 	/**
@@ -69,7 +96,7 @@ class Indexer {
 
 		// Dispatch background job
 		if ( function_exists( 'as_enqueue_async_action' ) ) {
-			as_enqueue_async_action( 'wp_neurolink_index_post', [ 'post_id' => $post_id ], 'neurolink' );
+			as_enqueue_async_action('wp_apexlink_index_post', ['post_id' => $post_id], 'apexlink');
 		} else {
 			// Fallback to real-time if AS is not available (not recommended)
 			$this->index_post( $post_id );
@@ -88,13 +115,23 @@ class Indexer {
 		}
 
 		$cleaned_text = $this->parser->parse( $post );
+		$token_data = $this->analyzer->analyze($cleaned_text);
+		// BUG FIX: Extract links from the merged/cleaned content, not just raw post_content
+		$links = $this->link_extractor->extract($cleaned_text);
 		$hash         = hash( 'sha256', $cleaned_text );
 
+		\ApexLink\WP\wp_apexlink()->logger()->info(sprintf('Indexing post %d. Content length: %d, Tokens: %d, Links: %d', $post_id, strlen($cleaned_text), count($token_data), count($links)));
+
+		// Update Semantic Index
 		$this->repository->upsert( [
 			'post_id'         => $post_id,
 			'stemmed_content' => $cleaned_text,
+			'token_data' => wp_json_encode($token_data),
 			'content_hash'    => $hash,
 			'indexed_at'      => current_time( 'mysql' ),
 		] );
+
+		// Update Link Graph
+		$this->link_repository->save_links($post_id, $links);
 	}
 }
