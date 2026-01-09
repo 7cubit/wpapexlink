@@ -73,6 +73,11 @@ class AdminPage {
 		wp_localize_script( 'wp-neurolink-admin', 'wpNeuroLinkData', [
 			'apiUrl' => rest_url( 'wp-neurolink/v1' ),
 			'nonce'  => wp_create_nonce( 'wp_rest' ),
+            'systemStatus' => [
+                'dbVersion' => get_option('wp_neurolink_db_version', '0.0.0'),
+                'phpVersion' => PHP_VERSION,
+                'tables' => \NeuroLink\WP\Database\SchemaManager::get_tables(),
+            ]
 		] );
 	}
 }

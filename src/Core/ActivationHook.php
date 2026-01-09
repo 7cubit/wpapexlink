@@ -13,7 +13,8 @@ class ActivationHook {
 	public static function activate() {
 		self::check_php_version();
 		self::check_dependencies();
-		self::setup_initial_db();
+
+        \NeuroLink\WP\Database\SchemaManager::update_schema();
 		
 		flush_rewrite_rules();
 	}
