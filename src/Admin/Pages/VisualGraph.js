@@ -1,8 +1,8 @@
 import { __ } from '@wordpress/i18n';
 import { useEffect, useRef, useState } from '@wordpress/element';
 import * as d3 from 'd3';
-import { useQuery } from '@tanstack/react-query';
-import { Maximize, Download, Info, Search, Filter } from 'lucide-react';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { Maximize, Download, Info, Search, Filter, Loader2, ExternalLink, ArrowRight, ArrowLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const VisualGraph = ({ darkMode }) => {
@@ -11,6 +11,7 @@ const VisualGraph = ({ darkMode }) => {
     const [selectedNode, setSelectedNode] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('all');
+    const [connections, setConnections] = useState(null);
 
     const baseUrl = window.wpApexLinkData?.apiUrl || '/wp-json/apexlink/v1';
 
@@ -24,13 +25,40 @@ const VisualGraph = ({ darkMode }) => {
         }
     });
 
+    // Analyze connections mutation
+    const analyzeConnectionsMutation = useMutation({
+        mutationFn: async (postId) => {
+            const res = await fetch(`${baseUrl}/graph/connections?post_id=${postId}`, {
+                headers: { 'X-WP-Nonce': window.wpApexLinkData?.nonce }
+            });
+            return res.json();
+        },
+        onSuccess: (data) => {
+            setConnections(data);
+            toast.success(__('Connection analysis complete!', 'wp-apexlink'));
+        },
+        onError: () => {
+            toast.error(__('Failed to analyze connections.', 'wp-apexlink'));
+        }
+    });
+
+    const handleAnalyzeConnections = () => {
+        if (selectedNode) {
+            setConnections(null);
+            analyzeConnectionsMutation.mutate(selectedNode.id);
+        }
+    };
+
+    // Reset connections when node changes
+    useEffect(() => {
+        setConnections(null);
+    }, [selectedNode?.id]);
+
     useEffect(() => {
         if (!graphData || !graphData.nodes || !svgRef.current || !containerRef.current) {
-            console.log('[ApexLink VisualGraph] Skipping effect: missing data or refs', { graphData, svg: !!svgRef.current, container: !!containerRef.current });
             return;
         }
 
-        console.log('[ApexLink VisualGraph] Starting simulation with', graphData.nodes.length, 'nodes');
 
         const width = containerRef.current.clientWidth;
         const height = containerRef.current.clientHeight;
@@ -94,7 +122,7 @@ const VisualGraph = ({ darkMode }) => {
             .attr('stroke', darkMode ? '#1f2937' : '#fff')
             .attr('stroke-width', 3)
             .attr('class', 'transition-all duration-300 drop-shadow-sm neural-glow')
-            .on('mouseover', function(event, d) {
+            .on('mouseover', function (event, d) {
                 d3.select(this).attr('stroke', '#6366f1').attr('stroke-width', 5);
                 // Highlight connected edges
                 link.filter(l => l.source.id === d.id || l.target.id === d.id)
@@ -102,7 +130,7 @@ const VisualGraph = ({ darkMode }) => {
                     .attr('stroke-opacity', 1)
                     .attr('stroke-width', 3);
             })
-            .on('mouseout', function() {
+            .on('mouseout', function () {
                 d3.select(this).attr('stroke', darkMode ? '#1f2937' : '#fff').attr('stroke-width', 3);
                 link.attr('stroke', darkMode ? '#4b5563' : '#cbd5e1')
                     .attr('stroke-opacity', 0.4)
@@ -163,8 +191,8 @@ const VisualGraph = ({ darkMode }) => {
                 <div className="flex items-center space-x-4">
                     <div className="relative">
                         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <input 
-                            type="text" 
+                        <input
+                            type="text"
                             placeholder={__('Search posts...', 'wp-apexlink')}
                             className={`pl-10 pr-4 py-2 rounded-lg text-sm border focus:ring-2 focus:ring-neuro-brain outline-none w-64 ${darkMode ? 'bg-gray-900 border-gray-700 text-white' : 'bg-gray-50 border-gray-200'}`}
                             value={searchTerm}
@@ -173,7 +201,7 @@ const VisualGraph = ({ darkMode }) => {
                     </div>
                     <div className="flex items-center space-x-2">
                         <Filter className="w-4 h-4 text-gray-400" />
-                        <select 
+                        <select
                             className={`py-2 px-3 rounded-lg text-sm border focus:ring-2 focus:ring-neuro-brain outline-none ${darkMode ? 'bg-gray-900 border-gray-700 text-white' : 'bg-gray-50 border-gray-200'}`}
                             value={selectedCategory}
                             onChange={(e) => setSelectedCategory(e.target.value)}
@@ -196,7 +224,7 @@ const VisualGraph = ({ darkMode }) => {
 
             <div className="flex-grow flex space-x-4 min-h-0">
                 {/* Graph Area */}
-                <div 
+                <div
                     ref={containerRef}
                     className={`flex-grow rounded-2xl border overflow-hidden relative ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-gray-50 border-gray-100'}`}
                 >
@@ -234,7 +262,7 @@ const VisualGraph = ({ darkMode }) => {
                                 <label className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-2 block">{__('Title', 'wp-apexlink')}</label>
                                 <p className={`font-semibold leading-relaxed ${darkMode ? 'text-gray-100' : 'text-gray-800'}`}>{selectedNode.title}</p>
                             </div>
-                            
+
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-1 block">{__('Authority', 'wp-apexlink')}</label>
@@ -251,18 +279,98 @@ const VisualGraph = ({ darkMode }) => {
                             </div>
 
                             <div className="pt-6 border-t border-opacity-10">
-                                <a 
-                                    href={selectedNode.url} 
-                                    target="_blank" 
+                                <a
+                                    href={selectedNode.url}
+                                    target="_blank"
                                     rel="noopener noreferrer"
                                     className="block w-full text-center bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-3 rounded-xl transition-all mb-3 text-sm"
                                 >
                                     {__('View Post', 'wp-apexlink')}
                                 </a>
-                                <button className="w-full bg-neuro-brain hover:bg-opacity-90 text-white font-bold py-3 rounded-xl transition-all text-sm">
-                                    {__('Analyze Connections', 'wp-apexlink')}
+                                <button
+                                    onClick={handleAnalyzeConnections}
+                                    disabled={analyzeConnectionsMutation.isPending}
+                                    className="w-full bg-neuro-brain hover:bg-opacity-90 text-white font-bold py-3 rounded-xl transition-all text-sm flex items-center justify-center gap-2"
+                                >
+                                    {analyzeConnectionsMutation.isPending ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            {__('Analyzing...', 'wp-apexlink')}
+                                        </>
+                                    ) : (
+                                        __('Analyze Connections', 'wp-apexlink')
+                                    )}
                                 </button>
                             </div>
+
+                            {/* Connection Analysis Results */}
+                            {connections && (
+                                <div className="pt-6 border-t border-opacity-10 space-y-4 animate-in fade-in duration-300">
+                                    {/* Outbound Links */}
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <ArrowRight className="w-4 h-4 text-emerald-500" />
+                                            <label className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                                                {__('Outbound Links', 'wp-apexlink')} ({connections.outbound?.length || 0})
+                                            </label>
+                                        </div>
+                                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                                            {connections.outbound?.length > 0 ? connections.outbound.map((link, i) => (
+                                                <a
+                                                    key={i}
+                                                    href={link.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className={`block p-2 rounded-lg text-xs truncate transition-all ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-50 hover:bg-gray-100 text-gray-600'}`}
+                                                >
+                                                    <span className="font-medium">{link.title || link.anchor}</span>
+                                                </a>
+                                            )) : (
+                                                <p className="text-xs text-gray-500 italic">{__('No outbound links', 'wp-apexlink')}</p>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Inbound Links */}
+                                    <div>
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <ArrowLeft className="w-4 h-4 text-indigo-500" />
+                                            <label className="text-xs font-bold uppercase tracking-wider text-gray-400">
+                                                {__('Inbound Links', 'wp-apexlink')} ({connections.inbound?.length || 0})
+                                            </label>
+                                        </div>
+                                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                                            {connections.inbound?.length > 0 ? connections.inbound.map((link, i) => (
+                                                <a
+                                                    key={i}
+                                                    href={link.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className={`block p-2 rounded-lg text-xs truncate transition-all ${darkMode ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' : 'bg-gray-50 hover:bg-gray-100 text-gray-600'}`}
+                                                >
+                                                    <span className="font-medium">{link.title || link.anchor}</span>
+                                                </a>
+                                            )) : (
+                                                <p className="text-xs text-gray-500 italic">{__('No inbound links', 'wp-apexlink')}</p>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Summary Stats */}
+                                    <div className={`p-4 rounded-xl ${darkMode ? 'bg-indigo-900/20' : 'bg-indigo-50'}`}>
+                                        <div className="grid grid-cols-2 gap-4 text-center">
+                                            <div>
+                                                <div className="text-xl font-black text-emerald-500">{connections.outbound?.length || 0}</div>
+                                                <div className="text-[10px] text-gray-500 uppercase font-bold">{__('Links Out', 'wp-apexlink')}</div>
+                                            </div>
+                                            <div>
+                                                <div className="text-xl font-black text-indigo-500">{connections.inbound?.length || 0}</div>
+                                                <div className="text-[10px] text-gray-500 uppercase font-bold">{__('Links In', 'wp-apexlink')}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}

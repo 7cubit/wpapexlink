@@ -23,18 +23,16 @@ const SetupWizard = ({ darkMode, onComplete }) => {
         mutationFn: async (key) => {
             const res = await fetch(`${baseUrl}/license/activate`, {
                 method: 'POST',
-                headers: { 
+                headers: {
                     'Content-Type': 'application/json',
-                    'X-WP-Nonce': window.wpApexLinkData?.nonce 
+                    'X-WP-Nonce': window.wpApexLinkData?.nonce
                 },
                 body: JSON.stringify({ license_key: key })
             });
             const json = await res.json();
-            console.log('[ApexLink SetupWizard] Activation response:', json);
             return json;
         },
         onSuccess: (data) => {
-            console.log('[ApexLink SetupWizard] onSuccess data:', data);
             if (data.success && data.data?.active) {
                 toast.success(__('License activated successfully!', 'wp-apexlink'));
                 setStep(3);
@@ -43,8 +41,7 @@ const SetupWizard = ({ darkMode, onComplete }) => {
                 toast.error(data.message || data.data?.message || __('Invalid license key', 'wp-apexlink'));
             }
         },
-        onError: (error) => {
-            console.error('[ApexLink SetupWizard] Activation error:', error);
+        onError: () => {
             toast.error(__('Network error during activation.', 'wp-apexlink'));
         }
     });
@@ -53,9 +50,9 @@ const SetupWizard = ({ darkMode, onComplete }) => {
         mutationFn: async (settings) => {
             const res = await fetch(`${baseUrl}/settings`, {
                 method: 'POST',
-                headers: { 
+                headers: {
                     'Content-Type': 'application/json',
-                    'X-WP-Nonce': window.wpApexLinkData?.nonce 
+                    'X-WP-Nonce': window.wpApexLinkData?.nonce
                 },
                 body: JSON.stringify(settings)
             });
@@ -95,11 +92,11 @@ const SetupWizard = ({ darkMode, onComplete }) => {
     return (
         <div className={`fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300`}>
             <div className={`max-w-xl w-full rounded-[2.5rem] overflow-hidden shadow-2xl border flex flex-col animate-in zoom-in-95 duration-500 delay-150 fill-mode-both ${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-100'}`}>
-                
+
                 {/* Progress Bar */}
                 <div className="flex h-1.5 w-full bg-gray-100 dark:bg-gray-800">
-                    <div 
-                        className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 transition-all duration-700" 
+                    <div
+                        className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 transition-all duration-700"
                         style={{ width: `${(step / steps.length) * 100}%` }}
                     />
                 </div>
@@ -133,7 +130,7 @@ const SetupWizard = ({ darkMode, onComplete }) => {
                             <div className="animate-in fade-in slide-in-from-right-4 duration-500">
                                 <h2 className={`text-2xl font-black mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{__('Activate ApexLink', 'wp-apexlink')}</h2>
                                 <p className="text-gray-500 mb-8">{__('Enter your license key to unlock AI features and cloud reranking.', 'wp-apexlink')}</p>
-                                
+
                                 <div className="relative group">
                                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors group-focus-within:text-indigo-500 text-gray-400">
                                         <Key className="h-5 w-5" />
@@ -156,7 +153,7 @@ const SetupWizard = ({ darkMode, onComplete }) => {
                             <div className="animate-in fade-in slide-in-from-right-4 duration-500">
                                 <h2 className={`text-2xl font-black mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{__('AI Intelligence (Optional)', 'wp-apexlink')}</h2>
                                 <p className="text-gray-500 mb-8">{__('Connect your OpenAI key for unlimited AI reranking and Magic Synonyms.', 'wp-apexlink')}</p>
-                                
+
                                 <div className="relative group mb-4">
                                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors group-focus-within:text-purple-500 text-gray-400">
                                         <Sparkles className="h-5 w-5" />
@@ -192,7 +189,7 @@ const SetupWizard = ({ darkMode, onComplete }) => {
 
                     <div className="mt-12 flex justify-between items-center">
                         {step > 1 && step < 4 && (
-                            <button 
+                            <button
                                 onClick={() => setStep(step - 1)}
                                 className={`font-bold transition-colors ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}
                             >
@@ -200,7 +197,7 @@ const SetupWizard = ({ darkMode, onComplete }) => {
                             </button>
                         )}
                         <div />
-                        <button 
+                        <button
                             onClick={handleNext}
                             disabled={activateMutation.isLoading || settingsMutation.isLoading}
                             className={`flex items-center px-8 py-4 rounded-2xl font-black transition-all shadow-xl active:scale-95 disabled:opacity-50 ${darkMode ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/20' : 'bg-gray-900 hover:bg-black text-white shadow-gray-900/20'}`}

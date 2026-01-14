@@ -1,29 +1,60 @@
 import { __ } from '@wordpress/i18n';
 import { useQuery } from '@tanstack/react-query';
-import { Globe, Zap, ShieldCheck, AlertCircle, ExternalLink } from 'lucide-react';
+import { Globe, Zap, ShieldCheck, AlertCircle, ExternalLink, Loader2 } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
 import toast from 'react-hot-toast';
 
-// Mock trend generator
-const generateTrend = () => Array.from({ length: 7 }, () => ({ value: Math.floor(Math.random() * 100) }));
+// Generate stable trend data based on index (for consistent visuals)
+const generateTrend = (seed) => Array.from({ length: 7 }, (_, i) => ({
+    value: Math.floor(Math.abs(Math.sin(seed + i * 1.5) * 100))
+}));
 
 const AgencyDashboard = ({ darkMode }) => {
     const baseUrl = window.wpApexLinkData?.apiUrl || '/wp-json/apexlink/v1';
-    const licenseKey = 'APEXLINK-DEBUG-2024'; // In production, this would be fetched from settings
 
-    const { data: aggregation, isLoading } = useQuery({
-        queryKey: ['agency_aggregation'],
+    // Fetch settings to get license key
+    const { data: settings } = useQuery({
+        queryKey: ['settings'],
         queryFn: async () => {
-            const res = await fetch(`${baseUrl}/agency/billing/aggregation?agency_license=${licenseKey}`, {
+            const res = await fetch(`${baseUrl}/settings`, {
                 headers: { 'X-WP-Nonce': window.wpApexLinkData?.nonce }
             });
             return res.json();
         }
     });
 
+    const licenseKey = settings?.apexlink_license_key || '';
+
+    const { data: aggregation, isLoading } = useQuery({
+        queryKey: ['agency_aggregation', licenseKey],
+        queryFn: async () => {
+            const res = await fetch(`${baseUrl}/agency/billing/aggregation?agency_license=${licenseKey}`, {
+                headers: { 'X-WP-Nonce': window.wpApexLinkData?.nonce }
+            });
+            return res.json();
+        },
+        enabled: !!licenseKey
+    });
+
+    const handleOpenPortal = () => {
+        const portalUrl = settings?.apexlink_agency_portal_url || 'https://my.apexlink.ai/agency';
+        window.open(portalUrl, '_blank');
+    };
+
     if (isLoading) {
-        return <div className="p-8 text-center text-gray-500">{__('Loading agency data...', 'wp-apexlink')}</div>;
+        return (
+            <div className="p-20 text-center text-gray-400">
+                <Loader2 className="w-12 h-12 animate-spin mx-auto mb-4" />
+                <p className="font-bold">{__('Loading agency data...', 'wp-apexlink')}</p>
+            </div>
+        );
     }
+
+    // Calculate credit pool progress
+    const creditPoolTotal = aggregation?.credit_pool_total || 0;
+    const creditPoolRemaining = aggregation?.credit_pool_remaining || 0;
+    const creditPoolUsed = creditPoolTotal - creditPoolRemaining;
+    const creditPoolPercentage = creditPoolTotal > 0 ? Math.round((creditPoolRemaining / creditPoolTotal) * 100) : 0;
 
     return (
         <div className="space-y-8 animate-in fade-in duration-700">
@@ -48,14 +79,14 @@ const AgencyDashboard = ({ darkMode }) => {
                 <div className="relative z-10">
                     <h3 className={`text-sm font-bold uppercase tracking-widest mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{__('Master Credit Pool', 'wp-apexlink')}</h3>
                     <div className="flex items-baseline space-x-2">
-                        <span className={`text-4xl font-black ${darkMode ? 'text-white' : 'text-gray-900'}`}>{aggregation?.credit_pool_remaining || 0}</span>
+                        <span className={`text-4xl font-black ${darkMode ? 'text-white' : 'text-gray-900'}`}>{creditPoolRemaining}</span>
                         <span className="text-gray-500 font-bold">{__('Credits Available', 'wp-apexlink')}</span>
                     </div>
                     <div className="mt-6 flex space-x-4">
                         <div className="h-2 flex-grow bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                            <div 
-                                className="h-full bg-gradient-to-r from-indigo-500 to-purple-600"
-                                style={{ width: '65%' }}
+                            <div
+                                className="h-full bg-gradient-to-r from-indigo-500 to-purple-600 transition-all duration-500"
+                                style={{ width: `${creditPoolPercentage}%` }}
                             />
                         </div>
                     </div>
@@ -90,13 +121,13 @@ const AgencyDashboard = ({ darkMode }) => {
                                 <td className="px-6 py-4 text-center min-w-[100px]">
                                     <div className="h-6 w-full max-w-[80px] mx-auto opacity-50">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            <LineChart data={generateTrend()}>
-                                                <Line 
-                                                    type="monotone" 
-                                                    dataKey="value" 
-                                                    stroke="#6366f1" 
-                                                    strokeWidth={2} 
-                                                    dot={false} 
+                                            <LineChart data={generateTrend(idx)}>
+                                                <Line
+                                                    type="monotone"
+                                                    dataKey="value"
+                                                    stroke="#6366f1"
+                                                    strokeWidth={2}
+                                                    dot={false}
                                                     isAnimationActive={false}
                                                 />
                                             </LineChart>
@@ -107,7 +138,7 @@ const AgencyDashboard = ({ darkMode }) => {
                                     <div className="flex items-center space-x-2">
                                         <span className="font-bold">{site.limit}</span>
                                         <div className="w-20 h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
-                                            <div 
+                                            <div
                                                 className={`h-full ${site.usage_30d > site.limit * 0.9 ? 'bg-rose-500' : 'bg-indigo-500'}`}
                                                 style={{ width: `${Math.min(100, (site.usage_30d / site.limit) * 100)}%` }}
                                             />
@@ -120,7 +151,7 @@ const AgencyDashboard = ({ darkMode }) => {
                                     </span>
                                 </td>
                                 <td className="px-6 py-4 text-right flex justify-end space-x-2">
-                                    <button 
+                                    <button
                                         onClick={async () => {
                                             const res = await fetch(`${baseUrl}/agency/tunnel-login`, {
                                                 method: 'POST',
@@ -157,7 +188,10 @@ const AgencyDashboard = ({ darkMode }) => {
                 <p className="text-sm">
                     {__('Sub-account credit limits are managed in your Agency Portal. Sites exceeding their limit will fall back to local indexing without AI reranking.', 'wp-apexlink')}
                 </p>
-                <button className="ml-auto text-sm font-bold flex items-center hover:underline">
+                <button
+                    onClick={handleOpenPortal}
+                    className="ml-auto text-sm font-bold flex items-center hover:underline"
+                >
                     {__('Open Agency Portal', 'wp-apexlink')}
                     <ExternalLink className="w-3 h-3 ml-1" />
                 </button>

@@ -64,8 +64,8 @@ const MagnetTool = ({ darkMode }) => {
             });
             const data = await response.json();
             setSmartSuggestions(Array.isArray(data) ? data : []);
-        } catch (error) {
-            console.error('Failed to fetch smart suggestions', error);
+        } catch {
+            // Silently fail - smart suggestions are optional
         } finally {
             setIsSmartLoading(false);
         }
@@ -111,7 +111,7 @@ const MagnetTool = ({ darkMode }) => {
         if (toApply.length === 0) return;
 
         toast.loading(__('Applying batch links...', 'wp-apexlink'), { id: 'batch-magnet' });
-        
+
         let successCount = 0;
         for (const c of toApply) {
             try {
@@ -129,7 +129,7 @@ const MagnetTool = ({ darkMode }) => {
                 });
                 const data = await response.json();
                 if (data.success) successCount++;
-            } catch (e) {}
+            } catch (e) { }
         }
 
         toast.success(`${successCount} ${__('links created successfully!', 'wp-apexlink')}`, { id: 'batch-magnet' });
@@ -155,7 +155,7 @@ const MagnetTool = ({ darkMode }) => {
 
                     {!targetPost ? (
                         <div className="flex gap-2 max-w-md w-full">
-                            <input 
+                            <input
                                 type="text"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -165,7 +165,7 @@ const MagnetTool = ({ darkMode }) => {
                                 placeholder={__('Search target post...', 'wp-apexlink')}
                                 className={`flex-grow rounded-xl border-none ring-1 focus:ring-2 focus:ring-indigo-500 transition-all ${darkMode ? 'bg-gray-700 ring-gray-600 text-white' : 'bg-gray-50 ring-gray-200 text-gray-900'}`}
                             />
-                            
+
                             {/* Smart Suggestions Dropdown */}
                             {showSmart && !searchQuery && smartSuggestions.length > 0 && (
                                 <div className={`absolute top-full left-0 right-0 mt-2 z-50 p-4 border rounded-2xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
@@ -175,7 +175,7 @@ const MagnetTool = ({ darkMode }) => {
                                     </div>
                                     <div className="space-y-2">
                                         {smartSuggestions.map((post) => (
-                                            <button 
+                                            <button
                                                 key={post.id}
                                                 onClick={() => selectTarget(post)}
                                                 className={`w-full text-left p-3 rounded-xl transition-all flex items-center justify-between group ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}
@@ -190,7 +190,7 @@ const MagnetTool = ({ darkMode }) => {
                                     </div>
                                 </div>
                             )}
-                            <button 
+                            <button
                                 onClick={handlePostSearch}
                                 disabled={isSearching}
                                 className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-indigo-500/20"
@@ -204,7 +204,7 @@ const MagnetTool = ({ darkMode }) => {
                                 <span className="text-[10px] font-black uppercase tracking-widest text-indigo-500 leading-none mb-1">{__('Current Magnet', 'wp-apexlink')}</span>
                                 <h3 className={`font-bold text-sm ${darkMode ? 'text-white' : 'text-indigo-900'}`}>{targetPost.title}</h3>
                             </div>
-                            <button 
+                            <button
                                 onClick={() => setTargetPost(null)}
                                 className={`p-2 rounded-xl text-xs font-bold transition-all ${darkMode ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-white text-gray-500 shadow-sm'}`}
                             >
@@ -219,7 +219,7 @@ const MagnetTool = ({ darkMode }) => {
                     <div className={`absolute top-full left-0 right-0 mt-2 z-50 p-4 border rounded-2xl shadow-2xl animate-in fade-in zoom-in-95 duration-200 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'}`}>
                         <div className="space-y-2">
                             {searchResults.map((post) => (
-                                <button 
+                                <button
                                     key={post.ID}
                                     onClick={() => selectTarget(post)}
                                     className={`w-full text-left p-3 rounded-xl transition-all flex items-center justify-between group ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}`}
@@ -241,7 +241,7 @@ const MagnetTool = ({ darkMode }) => {
                             {__('Inbound Opportunities', 'wp-apexlink')}
                         </h2>
                         {candidates.length > 0 && (
-                            <button 
+                            <button
                                 onClick={handleBatchApply}
                                 className="flex items-center gap-2 px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow-lg shadow-emerald-500/20 transition-all active:scale-95"
                             >
@@ -278,13 +278,13 @@ const MagnetTool = ({ darkMode }) => {
                                     </div>
 
                                     <h4 className={`font-bold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{candidate.title}</h4>
-                                    
+
                                     <div className="flex items-center justify-between mt-auto">
                                         <div className="flex items-center text-xs text-gray-500 italic">
                                             <ArrowRight className="w-3 h-3 mr-1 text-indigo-500" />
                                             {__('Will use anchor:', 'wp-apexlink')} "{targetPost.title}"
                                         </div>
-                                        <button 
+                                        <button
                                             onClick={() => applyLink(candidate)}
                                             disabled={applyingId === candidate.post_id}
                                             className={`flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold transition-all ${darkMode ? 'bg-indigo-500 hover:bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white shadow-sm'}`}
@@ -297,7 +297,7 @@ const MagnetTool = ({ darkMode }) => {
                             ))}
                         </div>
                     ) : (
-                        <EmptyState 
+                        <EmptyState
                             type="magnet"
                             title={__('No Pull Opportunities', 'wp-apexlink')}
                             description={__('We couldn\'t find any relevant posts to pull links from for this target. Try adjusting your target keywords.', 'wp-apexlink')}

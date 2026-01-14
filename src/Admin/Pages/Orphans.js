@@ -14,7 +14,7 @@ const Orphans = ({ darkMode }) => {
     const { data: orphans = [], isLoading, refetch } = useQuery({
         queryKey: ['orphans'],
         queryFn: async () => {
-            const res = await fetch(`${baseUrl}/get_detailed_orphans`, {
+            const res = await fetch(`${baseUrl}/orphans`, {
                 headers: { 'X-WP-Nonce': window.wpApexLinkData?.nonce }
             });
             const data = await res.json();
@@ -26,9 +26,9 @@ const Orphans = ({ darkMode }) => {
         mutationFn: async (ids) => {
             const res = await fetch(`${baseUrl}/orphans/bulk-scan`, {
                 method: 'POST',
-                headers: { 
+                headers: {
                     'Content-Type': 'application/json',
-                    'X-WP-Nonce': window.wpApexLinkData?.nonce 
+                    'X-WP-Nonce': window.wpApexLinkData?.nonce
                 },
                 body: JSON.stringify({ ids })
             });
@@ -50,7 +50,7 @@ const Orphans = ({ darkMode }) => {
     };
 
     const toggleSelect = (id) => {
-        setSelectedIds(prev => 
+        setSelectedIds(prev =>
             prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
         );
     };
@@ -62,7 +62,7 @@ const Orphans = ({ darkMode }) => {
                     <h2 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{__('Orphan Posts', 'wp-apexlink')}</h2>
                     <p className="text-gray-500 mt-1">{__('Posts with zero inbound internal links. These are hard for search engines to find.', 'wp-apexlink')}</p>
                 </div>
-                <button 
+                <button
                     onClick={() => refetch()}
                     className="p-2 text-gray-400 hover:text-neuro-brain transition-colors"
                     title={__('Refresh List', 'wp-apexlink')}
@@ -72,7 +72,7 @@ const Orphans = ({ darkMode }) => {
             </div>
 
             {orphans?.length === 0 && !isLoading ? (
-                <EmptyState 
+                <EmptyState
                     type="reports"
                     title={__('Perfect Score!', 'wp-apexlink')}
                     description={__('No orphan posts found. Every post on your site is reachable via internal links.', 'wp-apexlink')}
@@ -84,8 +84,8 @@ const Orphans = ({ darkMode }) => {
                         <thead className={darkMode ? 'bg-gray-900/50' : 'bg-gray-50'}>
                             <tr>
                                 <th className="px-6 py-4 text-left">
-                                    <input 
-                                        type="checkbox" 
+                                    <input
+                                        type="checkbox"
                                         checked={Array.isArray(orphans) && orphans.length > 0 && selectedIds.length === orphans.length}
                                         onChange={toggleSelectAll}
                                         className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
@@ -112,8 +112,8 @@ const Orphans = ({ darkMode }) => {
                                 Array.isArray(orphans) && orphans.map((post) => (
                                     <tr key={post.id} className={`${darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-50'} transition-colors`}>
                                         <td className="px-6 py-4">
-                                            <input 
-                                                type="checkbox" 
+                                            <input
+                                                type="checkbox"
                                                 checked={selectedIds.includes(post.id)}
                                                 onChange={() => toggleSelect(post.id)}
                                                 className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
@@ -161,7 +161,7 @@ const Orphans = ({ darkMode }) => {
                             <span className={`text-sm font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{__('Posts Selected', 'wp-apexlink')}</span>
                         </div>
                         <div className="flex space-x-3">
-                            <button 
+                            <button
                                 onClick={() => bulkScanMutation.mutate(selectedIds)}
                                 disabled={bulkScanMutation.isPending}
                                 className="flex items-center px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-xl transition-all shadow-lg shadow-indigo-500/20"

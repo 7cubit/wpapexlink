@@ -1,9 +1,9 @@
 import { useState, useEffect } from '@wordpress/element';
-import { __ } from '@wordpress/i18n';
-import { 
-    BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie 
+import { __, sprintf } from '@wordpress/i18n';
+import {
+    BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie
 } from 'recharts';
-import { 
+import {
     TrendingUp, AlertCircle, Unlink, Globe, Download, FileText, Loader2, CheckCircle2, ChevronRight, BarChart3, Clock
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -18,7 +18,9 @@ const Reports = ({ darkMode }) => {
     const [depthData, setDepthData] = useState([]);
     const [brokenLinks, setBrokenLinks] = useState([]);
     const [domainStats, setDomainStats] = useState([]);
-    
+    const [rescueProgress, setRescueProgress] = useState({ percentage: 0, count: 0 });
+    const [topAssets, setTopAssets] = useState([]);
+
     const baseUrl = window.wpApexLinkData?.apiUrl || '/wp-json/apexlink/v1';
 
     useEffect(() => {
@@ -27,20 +29,24 @@ const Reports = ({ darkMode }) => {
 
     const fetchAllReports = async () => {
         setLoading(true);
+        const headers = { 'X-WP-Nonce': window.wpApexLinkData?.nonce };
         try {
-            const [velocity, depth, broken, domains] = await Promise.all([
-                fetch(`${baseUrl}/reports/link-velocity`).then(r => r.json()).catch(() => []),
-                fetch(`${baseUrl}/reports/click-depth`).then(r => r.json()).catch(() => []),
-                fetch(`${baseUrl}/reports/broken-links`).then(r => r.json()).catch(() => []),
-                fetch(`${baseUrl}/reports/domain-stats`).then(r => r.json()).catch(() => [])
+            const [velocity, depth, broken, domains, rescue, assets] = await Promise.all([
+                fetch(`${baseUrl}/reports/link-velocity`, { headers }).then(r => r.json()).catch(() => []),
+                fetch(`${baseUrl}/reports/click-depth`, { headers }).then(r => r.json()).catch(() => []),
+                fetch(`${baseUrl}/reports/broken-links`, { headers }).then(r => r.json()).catch(() => []),
+                fetch(`${baseUrl}/reports/domain-stats`, { headers }).then(r => r.json()).catch(() => []),
+                fetch(`${baseUrl}/reports/rescue-progress`, { headers }).then(r => r.json()).catch(() => ({ percentage: 0, count: 0 })),
+                fetch(`${baseUrl}/reports/top-assets`, { headers }).then(r => r.json()).catch(() => [])
             ]);
-            
+
             setVelocityData(Array.isArray(velocity) ? velocity : []);
             setDepthData(Array.isArray(depth) ? depth : []);
             setBrokenLinks(Array.isArray(broken) ? broken : []);
             setDomainStats(Array.isArray(domains) ? domains : []);
-        } catch (error) {
-            console.error('Reports Error:', error);
+            setRescueProgress(rescue || { percentage: 0, count: 0 });
+            setTopAssets(Array.isArray(assets) ? assets : []);
+        } catch {
             toast.error(__('Error loading reports.', 'wp-apexlink'));
         } finally {
             setLoading(false);
@@ -53,21 +59,21 @@ const Reports = ({ darkMode }) => {
 
     const handlePDFExport = () => {
         const doc = jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-        
+
         // Header
         doc.setFontSize(22);
         doc.setTextColor(79, 70, 229); // Indigo-600
         doc.text('ApexLink SEO Report', 20, 20);
-        
+
         doc.setFontSize(10);
         doc.setTextColor(150, 150, 150);
         doc.text(`Generated on ${new Date().toLocaleDateString()}`, 20, 28);
-        
+
         // Section: Overview
         doc.setFontSize(16);
         doc.setTextColor(31, 41, 55);
         doc.text('Linking Overview', 20, 45);
-        
+
         doc.autoTable({
             startY: 50,
             head: [['Metric', 'Value']],
@@ -119,14 +125,14 @@ const Reports = ({ darkMode }) => {
                     </p>
                 </div>
                 <div className="flex gap-3">
-                    <button 
+                    <button
                         onClick={handleCSVExport}
                         className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border ${darkMode ? 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
                     >
                         <Download className="w-4 h-4" />
                         {__('Export CSV', 'wp-apexlink')}
                     </button>
-                    <button 
+                    <button
                         onClick={handlePDFExport}
                         className="flex items-center gap-2 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-500/20 transition-all active:scale-95"
                     >
@@ -147,11 +153,10 @@ const Reports = ({ darkMode }) => {
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                            activeTab === tab.id 
+                        className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold transition-all ${activeTab === tab.id
                             ? (darkMode ? 'bg-gray-700 text-white shadow-lg' : 'bg-white text-indigo-600 shadow-sm')
                             : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-                        }`}
+                            }`}
                     >
                         <tab.icon className="w-4 h-4" />
                         {tab.label}
@@ -161,10 +166,10 @@ const Reports = ({ darkMode }) => {
 
             {/* Content Areas */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                
+
                 {/* Main Report Area */}
                 <div className="lg:col-span-2 space-y-8">
-                    
+
                     {activeTab === 'velocity' && (
                         <div className={`p-8 rounded-[2rem] border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100 shadow-sm'}`}>
                             <div className="flex items-center gap-2 mb-8">
@@ -176,14 +181,14 @@ const Reports = ({ darkMode }) => {
                                     <AreaChart data={velocityData}>
                                         <defs>
                                             <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1}/>
-                                                <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                                                <stop offset="5%" stopColor="#6366f1" stopOpacity={0.1} />
+                                                <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
                                             </linearGradient>
                                         </defs>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={darkMode ? '#374151' : '#f3f4f6'} />
-                                        <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fontSize: 10}} dy={10} />
-                                        <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10}} />
-                                        <Tooltip 
+                                        <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} dy={10} />
+                                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
+                                        <Tooltip
                                             contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                                             labelStyle={{ fontWeight: 'bold', marginBottom: '4px' }}
                                         />
@@ -219,7 +224,7 @@ const Reports = ({ darkMode }) => {
                                         </button>
                                     </div>
                                 )) : (
-                                    <EmptyState 
+                                    <EmptyState
                                         type="reports"
                                         title={__('Perfect Health!', 'wp-apexlink')}
                                         description={__('No broken internal links found. Your internal neural architecture is solid.', 'wp-apexlink')}
@@ -241,7 +246,7 @@ const Reports = ({ darkMode }) => {
                                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={darkMode ? '#374151' : '#f3f4f6'} />
                                             <XAxis dataKey="depth" axisLine={false} tickLine={false} />
                                             <YAxis axisLine={false} tickLine={false} />
-                                            <Tooltip cursor={{fill: 'transparent'}} />
+                                            <Tooltip cursor={{ fill: 'transparent' }} />
                                             <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                                                 {depthData.map((entry, index) => (
                                                     <Cell key={`cell-${index}`} fill={index === 0 ? '#10b981' : '#6366f1'} />
@@ -274,7 +279,7 @@ const Reports = ({ darkMode }) => {
                                                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                                     ))}
                                                 </Pie>
-                                                <Tooltip cursor={{fill: 'transparent'}} />
+                                                <Tooltip cursor={{ fill: 'transparent' }} />
                                             </PieChart>
                                         </ResponsiveContainer>
                                     </div>
@@ -282,7 +287,7 @@ const Reports = ({ darkMode }) => {
                                         {domainStats.slice(0, 3).map((d, i) => (
                                             <div key={i} className="flex justify-between items-center text-[10px]">
                                                 <span className="flex items-center gap-2">
-                                                    <div className="w-2 h-2 rounded-full" style={{backgroundColor: COLORS[i % COLORS.length]}} />
+                                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
                                                     <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>{d.domain}</span>
                                                 </span>
                                                 <span className="font-bold">{d.count}</span>
@@ -291,7 +296,7 @@ const Reports = ({ darkMode }) => {
                                     </div>
                                 </div>
                             ) : (
-                                <EmptyState 
+                                <EmptyState
                                     type="reports"
                                     title={__('No Outgoing Links', 'wp-apexlink')}
                                     description={__('We haven\'t detected any external links yet. Start linking to authoritative sources to build trust.', 'wp-apexlink')}
@@ -303,8 +308,8 @@ const Reports = ({ darkMode }) => {
 
                     {activeTab === 'domains' && (
                         <div className={`p-8 rounded-[2rem] border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100 shadow-sm'}`}>
-                             <h3 className={`font-black uppercase tracking-widest text-sm mb-8 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{__('Extended Domain Report', 'wp-apexlink')}</h3>
-                             <div className="space-y-4">
+                            <h3 className={`font-black uppercase tracking-widest text-sm mb-8 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{__('Extended Domain Report', 'wp-apexlink')}</h3>
+                            <div className="space-y-4">
                                 {domainStats.map((d, idx) => (
                                     <div key={idx} className="flex items-center justify-between p-4 rounded-xl dark:bg-gray-900 bg-gray-50 border border-transparent hover:border-indigo-500/20 transition-all">
                                         <div className="flex items-center gap-4">
@@ -315,16 +320,16 @@ const Reports = ({ darkMode }) => {
                                         </div>
                                         <div className="flex items-center gap-6">
                                             <div className="w-32 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                                                <div 
-                                                    className="h-full bg-indigo-500" 
-                                                    style={{width: `${(d.count / (domainStats[0]?.count || 1)) * 100}%`}}
+                                                <div
+                                                    className="h-full bg-indigo-500"
+                                                    style={{ width: `${(d.count / (domainStats[0]?.count || 1)) * 100}%` }}
                                                 />
                                             </div>
                                             <span className="text-sm font-black text-indigo-500">{d.count}</span>
                                         </div>
                                     </div>
                                 ))}
-                             </div>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -336,27 +341,32 @@ const Reports = ({ darkMode }) => {
                             <TrendingUp className="w-32 h-32 text-white" />
                         </div>
                         <h4 className="text-white/60 text-[10px] uppercase font-black tracking-widest mb-4">{__('Orphan Rescue Progress', 'wp-apexlink')}</h4>
-                        <div className="text-4xl font-black text-white mb-2">64%</div>
+                        <div className="text-4xl font-black text-white mb-2">{rescueProgress.percentage}%</div>
                         <div className="w-full h-1.5 bg-white/20 rounded-full mb-6">
-                            <div className="h-full bg-white rounded-full w-[64%]" />
+                            <div className="h-full bg-white rounded-full transition-all duration-500" style={{ width: `${rescueProgress.percentage}%` }} />
                         </div>
                         <p className="text-white/80 text-xs leading-relaxed">
-                            {__('You have successfully linked to 142 previously orphaned posts. Keep it up!', 'wp-apexlink')}
+                            {rescueProgress.count > 0
+                                ? sprintf(__('You have successfully linked to %d previously orphaned posts. Keep it up!', 'wp-apexlink'), rescueProgress.count)
+                                : __('Start linking orphan posts to improve your site structure.', 'wp-apexlink')
+                            }
                         </p>
                     </div>
 
                     <div className={`p-8 rounded-[2rem] border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100 shadow-sm'}`}>
                         <h4 className={`text-[10px] uppercase font-black tracking-widest mb-6 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{__('Top Linked Assets', 'wp-apexlink')}</h4>
                         <div className="space-y-4">
-                            {[1, 2, 3].map(i => (
-                                <div key={i} className="flex gap-4 items-start pb-4 border-b border-gray-50 dark:border-gray-700 last:border-0 last:pb-0">
-                                    <div className="text-sm font-black text-indigo-500">#0{i}</div>
+                            {topAssets.length > 0 ? topAssets.slice(0, 3).map((asset, i) => (
+                                <div key={asset.id || i} className="flex gap-4 items-start pb-4 border-b border-gray-50 dark:border-gray-700 last:border-0 last:pb-0">
+                                    <div className="text-sm font-black text-indigo-500">#{String(i + 1).padStart(2, '0')}</div>
                                     <div>
-                                        <div className={`text-xs font-bold leading-tight mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{__('Mastering Internal Linking Patterns', 'wp-apexlink')}</div>
-                                        <div className="text-[10px] text-gray-500">42 {__('Inbound Links', 'wp-apexlink')}</div>
+                                        <div className={`text-xs font-bold leading-tight mb-1 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{asset.title}</div>
+                                        <div className="text-[10px] text-gray-500">{asset.inbound_count} {__('Inbound Links', 'wp-apexlink')}</div>
                                     </div>
                                 </div>
-                            ))}
+                            )) : (
+                                <p className="text-xs text-gray-500 italic">{__('No linked assets yet. Start adding internal links to see your top performers.', 'wp-apexlink')}</p>
+                            )}
                         </div>
                     </div>
                 </div>

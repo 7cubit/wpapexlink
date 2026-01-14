@@ -10,6 +10,8 @@ const Autopilot = ({ darkMode }) => {
     const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
     const [newRule, setNewRule] = useState({ keyword: '', target_id: '', match_type: 'exact' });
     const [simResults, setSimResults] = useState(null);
+    const [maxLinksPerPost, setMaxLinksPerPost] = useState(3);
+    const [minConfidence, setMinConfidence] = useState(85);
 
     const baseUrl = window.wpApexLinkData?.apiUrl || '/wp-json/apexlink/v1';
 
@@ -70,7 +72,9 @@ const Autopilot = ({ darkMode }) => {
                     'X-WP-Nonce': window.wpApexLinkData?.nonce
                 },
                 body: JSON.stringify({
-                    simulation: isSimulation
+                    simulation: isSimulation,
+                    max_links_per_post: maxLinksPerPost,
+                    min_confidence: minConfidence
                 })
             });
             return res.json();
@@ -145,14 +149,14 @@ const Autopilot = ({ darkMode }) => {
                     </div>
                     <div className="flex gap-4">
                         {simResults ? (
-                             <button 
+                            <button
                                 onClick={() => setSimResults(null)}
                                 className={`px-6 py-3 rounded-2xl font-bold text-sm transition-all border ${darkMode ? 'border-gray-700 text-gray-400' : 'border-gray-200 text-gray-500'}`}
                             >
                                 {__('Cancel Simulation', 'wp-apexlink')}
                             </button>
                         ) : (
-                            <button 
+                            <button
                                 onClick={() => runAutopilotMutation.mutate(true)}
                                 disabled={runAutopilotMutation.isPending}
                                 className="flex items-center px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white font-bold rounded-2xl transition-all shadow-lg hover:shadow-indigo-500/20 active:scale-95"
@@ -174,7 +178,7 @@ const Autopilot = ({ darkMode }) => {
                                     <h3 className={`text-xl font-black ${darkMode ? 'text-white' : 'text-indigo-900'}`}>{__('Simulation Report', 'wp-apexlink')}</h3>
                                     <p className="text-sm text-indigo-500 font-bold">{sprintf(__('%d potential links discovered.', 'wp-apexlink'), simResults.length)}</p>
                                 </div>
-                                <button 
+                                <button
                                     onClick={() => commitMutation.mutate()}
                                     disabled={commitMutation.isPending}
                                     className="px-8 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-black rounded-2xl shadow-xl shadow-emerald-500/20 flex items-center"
@@ -183,7 +187,7 @@ const Autopilot = ({ darkMode }) => {
                                     {__('Commit to Inbox', 'wp-apexlink')}
                                 </button>
                             </div>
-                            
+
                             <div className="grid grid-cols-1 gap-3 max-h-[300px] overflow-y-auto pr-2">
                                 {simResults.map((link, idx) => (
                                     <div key={idx} className={`p-4 rounded-xl border flex items-center justify-between ${darkMode ? 'bg-gray-900/50 border-gray-700 text-gray-300' : 'bg-white border-indigo-50 text-gray-700'}`}>
@@ -208,7 +212,7 @@ const Autopilot = ({ darkMode }) => {
                 <div className="lg:col-span-2 space-y-4">
                     <div className="flex items-center justify-between">
                         <h3 className={`font-bold text-xl px-2 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{__('Active Rules', 'wp-apexlink')}</h3>
-                        <button 
+                        <button
                             onClick={() => setIsRuleModalOpen(true)}
                             className="flex items-center text-sm font-bold text-indigo-500 hover:text-indigo-600 bg-indigo-500/10 px-4 py-2 rounded-xl transition-colors"
                         >
@@ -252,7 +256,7 @@ const Autopilot = ({ darkMode }) => {
                                             <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase ${rule.status === 'active' ? 'bg-green-500/10 text-green-500' : 'bg-gray-500/10 text-gray-500'}`}>
                                                 {rule.status}
                                             </span>
-                                            <button 
+                                            <button
                                                 onClick={() => deleteRuleMutation.mutate(rule.id)}
                                                 className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-all"
                                             >
@@ -269,22 +273,36 @@ const Autopilot = ({ darkMode }) => {
                 {/* Automation Constraints */}
                 <div className="space-y-6">
                     <h3 className={`font-bold text-xl px-2 ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{__('Run Constraints', 'wp-apexlink')}</h3>
-                    
+
                     <div className={`p-6 rounded-2xl border space-y-6 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100 shadow-sm'}`}>
                         <div className="space-y-3">
                             <div className="flex items-center justify-between">
                                 <label className={`text-sm font-bold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{__('Max Links Per Post', 'wp-apexlink')}</label>
-                                <span className="text-indigo-500 font-bold text-sm">3</span>
+                                <span className="text-indigo-500 font-bold text-sm">{maxLinksPerPost}</span>
                             </div>
-                            <input type="range" min="1" max="10" defaultValue="3" className="w-full accent-indigo-500" />
+                            <input
+                                type="range"
+                                min="1"
+                                max="10"
+                                value={maxLinksPerPost}
+                                onChange={(e) => setMaxLinksPerPost(parseInt(e.target.value))}
+                                className="w-full accent-indigo-500"
+                            />
                         </div>
-                        
+
                         <div className="space-y-3">
                             <div className="flex items-center justify-between">
                                 <label className={`text-sm font-bold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>{__('Min Confidence', 'wp-apexlink')}</label>
-                                <span className="text-indigo-500 font-bold text-sm">85%</span>
+                                <span className="text-indigo-500 font-bold text-sm">{minConfidence}%</span>
                             </div>
-                            <input type="range" min="50" max="100" defaultValue="85" className="w-full accent-indigo-500" />
+                            <input
+                                type="range"
+                                min="50"
+                                max="100"
+                                value={minConfidence}
+                                onChange={(e) => setMinConfidence(parseInt(e.target.value))}
+                                className="w-full accent-indigo-500"
+                            />
                         </div>
 
                         <div className="pt-4 border-t border-gray-100 dark:border-gray-700">
@@ -303,7 +321,7 @@ const Autopilot = ({ darkMode }) => {
                         <p className="text-xs text-red-600/70 mb-4 leading-relaxed">
                             {__('Immediately batch-remove all links injected by the last autopilot session.', 'wp-apexlink')}
                         </p>
-                        <button 
+                        <button
                             onClick={() => {
                                 if (window.confirm(__('Are you sure you want to revert the last autopilot batch?', 'wp-apexlink'))) {
                                     revertMutation.mutate();
@@ -325,38 +343,38 @@ const Autopilot = ({ darkMode }) => {
                     <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsRuleModalOpen(false)}></div>
                     <div className={`relative w-full max-w-md p-8 rounded-3xl border animate-in zoom-in-95 duration-200 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100 shadow-2xl'}`}>
                         <h4 className={`text-2xl font-black mb-6 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{__('Add Linking Rule', 'wp-apexlink')}</h4>
-                        
+
                         <div className="space-y-4">
                             <div className="space-y-2">
                                 <label className="text-xs font-bold uppercase tracking-wider text-gray-400">{__('Keyword / Anchor Text', 'wp-apexlink')}</label>
-                                <input 
-                                    type="text" 
+                                <input
+                                    type="text"
                                     placeholder="e.g. 'internal linking'"
                                     className={`w-full px-4 py-3 rounded-xl border outline-none focus:ring-2 focus:ring-indigo-500 ${darkMode ? 'bg-gray-900 border-gray-700 text-white' : 'bg-gray-50 border-gray-200'}`}
                                     value={newRule.keyword}
-                                    onChange={(e) => setNewRule({...newRule, keyword: e.target.value})}
+                                    onChange={(e) => setNewRule({ ...newRule, keyword: e.target.value })}
                                 />
                             </div>
 
                             <div className="space-y-2">
                                 <label className="text-xs font-bold uppercase tracking-wider text-gray-400">{__('Target Post ID', 'wp-apexlink')}</label>
-                                <input 
-                                    type="number" 
+                                <input
+                                    type="number"
                                     placeholder="123"
                                     className={`w-full px-4 py-3 rounded-xl border outline-none focus:ring-2 focus:ring-indigo-500 ${darkMode ? 'bg-gray-900 border-gray-700 text-white' : 'bg-gray-50 border-gray-200'}`}
                                     value={newRule.target_id}
-                                    onChange={(e) => setNewRule({...newRule, target_id: e.target.value})}
+                                    onChange={(e) => setNewRule({ ...newRule, target_id: e.target.value })}
                                 />
                             </div>
 
                             <div className="pt-4 flex space-x-3">
-                                <button 
+                                <button
                                     onClick={() => setIsRuleModalOpen(false)}
                                     className={`flex-1 py-3 font-bold rounded-2xl transition-all ${darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
                                 >
                                     {__('Cancel', 'wp-apexlink')}
                                 </button>
-                                <button 
+                                <button
                                     onClick={() => createRuleMutation.mutate(newRule)}
                                     className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl transition-all shadow-lg active:scale-95"
                                 >

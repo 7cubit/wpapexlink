@@ -11,17 +11,34 @@ class LicenseManager
     private const OPTION_KEY = 'apexlink_license_data';
     private const CLOUD_URL = 'https://apexlink-cloud.7cubit.workers.dev/auth/validate';
 
-    public function activate(string $key): array
+    public function activate(string $key, string $email = ''): array
     {
-        // Normalize key for comparison
+        // Normalize key and email for comparison
         $normalized_key = strtoupper(trim($key));
+        $normalized_email = strtolower(trim($email));
 
-        // Local bypass for development
+        // Validate email is provided
+        if (empty($normalized_email)) {
+            return ['success' => false, 'message' => 'Email address is required.'];
+        }
+
+        // Validate email format
+        if (!is_email($normalized_email)) {
+            return ['success' => false, 'message' => 'Invalid email address format.'];
+        }
+
+        // Local bypass for development/testing with specific email
         if ($normalized_key === 'APEXLINK-DEBUG-2024') {
+            // Debug key only works with specific email
+            if ($normalized_email !== '7cubit@gmail.com') {
+                return ['success' => false, 'message' => 'Invalid license key or email combination.'];
+            }
+
             $data = [
                 'active' => true,
                 'tier' => 'enterprise',
                 'expires_at' => '2099-12-31',
+                'email' => $normalized_email,
                 'message' => 'Debug License Active (Local Bypass)',
             ];
             $this->save_license_data($key, $data);
@@ -31,6 +48,7 @@ class LicenseManager
         $response = wp_remote_post(self::CLOUD_URL, [
             'body' => json_encode([
                 'license_key' => $key,
+                'email' => $normalized_email,
                 'site_url' => get_site_url(),
             ]),
             'headers' => ['Content-Type' => 'application/json'],
@@ -43,13 +61,15 @@ class LicenseManager
         $body = json_decode(wp_remote_retrieve_body($response), true);
 
         if (empty($body['active'])) {
-            return ['success' => false, 'message' => $body['message'] ?? 'Invalid license'];
+            return ['success' => false, 'message' => $body['message'] ?? 'Invalid license key or email combination.'];
         }
 
+        $body['email'] = $normalized_email;
         $this->save_license_data($key, $body);
 
         return ['success' => true, 'data' => $body];
     }
+
 
     public function is_active(): bool
     {
@@ -61,7 +81,8 @@ class LicenseManager
         // Periodically re-validate (e.g., every 24 hours)
         $last_check = $data['last_check'] ?? 0;
         if (time() - $last_check > DAY_IN_SECONDS) {
-            $this->activate($data['key']);
+            $email = $data['email'] ?? '';
+            $this->activate($data['key'], $email);
         }
 
         return true;

@@ -1,27 +1,20 @@
 import { __ } from '@wordpress/i18n';
-import { useState, useEffect } from '@wordpress/element';
+import { useState, useEffect, useMemo } from '@wordpress/element';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { TrendingUp, ExternalLink, Globe, Info, ChevronRight, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
 import toast from 'react-hot-toast';
 
-// Mock trend generator
-const generateTrend = () => Array.from({ length: 7 }, () => ({ value: Math.floor(Math.random() * 100) }));
+// Generate stable trend data based on position (for consistent visuals)
+const generateTrend = (seed) => Array.from({ length: 7 }, (_, i) => ({
+    value: Math.floor(Math.abs(Math.sin(seed + i) * 100))
+}));
 
 const RevenueReport = ({ darkMode }) => {
     const queryClient = useQueryClient();
     const baseUrl = window.wpApexLinkData?.apiUrl || '/wp-json/apexlink/v1';
-    
-    // Check for OAuth code in URL
-    useEffect(() => {
-        const urlParams = new URLSearchParams(window.location.search);
-        const code = urlParams.get('code');
-        if (code) {
-            exchangeCodeMutation.mutate(code);
-            // Clean up URL
-            window.history.replaceState({}, document.title, window.location.pathname + window.location.search.split('&code=')[0]);
-        }
-    }, []);
+
+    // Check for OAuth callback is now handled globally in AppRouter.js
 
     // Fetch Settings (to check connection status)
     const { data: settings } = useQuery({
@@ -47,44 +40,22 @@ const RevenueReport = ({ darkMode }) => {
         enabled: !!settings?.apexlink_gsc_connected
     });
 
-    // Exchange Code Mutation
-    const exchangeCodeMutation = useMutation({
-        mutationFn: async (code) => {
-            const res = await fetch(`${baseUrl}/gsc/exchange-code`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-WP-Nonce': window.wpApexLinkData?.nonce
-                },
-                body: JSON.stringify({ code })
-            });
-            return res.json();
-        },
-        onSuccess: (data) => {
-            if (data.success) {
-                toast.success(__('Google Search Console connected!', 'wp-apexlink'));
-                queryClient.invalidateQueries(['settings']);
-                queryClient.invalidateQueries(['revenue-report']);
-            } else {
-                toast.error(__('Failed to connect GSC.', 'wp-apexlink'));
-            }
-        }
-    });
+    // exchangeCodeMutation removed as we use gsc/callback now
 
     // Connect Handler
     const handleConnect = async () => {
         try {
-            const res = await fetch(`${baseUrl}/gsc/auth-url`, {
+            const res = await fetch(`${baseUrl}/gsc/connect-url`, {
                 headers: { 'X-WP-Nonce': window.wpApexLinkData?.nonce }
             });
             const data = await res.json();
             if (data.url) {
                 window.location.href = data.url;
             } else {
-                toast.error(__('Client ID missing in settings.', 'wp-apexlink'));
+                toast.error(__('Failed to initiate connection.', 'wp-apexlink'));
             }
         } catch (e) {
-            toast.error(__('Failed to get auth URL.', 'wp-apexlink'));
+            toast.error(__('Failed to initiate connection.', 'wp-apexlink'));
         }
     };
 
@@ -100,7 +71,7 @@ const RevenueReport = ({ darkMode }) => {
                         {__('Connect Google Search Console to identify keywords in "Striking Distance" (Page 2). Link to these pages to boost them to the first page and unlock organic revenue.', 'wp-apexlink')}
                     </p>
                 </div>
-                
+
                 <div className={`p-8 rounded-3xl border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100 shadow-xl'}`}>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10">
                         <div className="space-y-2">
@@ -120,16 +91,16 @@ const RevenueReport = ({ darkMode }) => {
                         </div>
                     </div>
 
-                    <button 
+                    <button
                         onClick={handleConnect}
                         className="px-10 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl transition-all shadow-xl shadow-indigo-600/20 active:scale-95 flex items-center mx-auto"
                     >
                         <TrendingUp className="w-5 h-5 mr-3" />
                         {__('Connect Google Search Console', 'wp-apexlink')}
                     </button>
-                    
+
                     <p className="mt-6 text-xs text-gray-500">
-                        {__('Ensure your Client ID and Secret are configured in Settings > Integrations first.', 'wp-apexlink')}
+                        {__('This will securely connect your site to Google Search Console via ApexLink Cloud proxy.', 'wp-apexlink')}
                     </p>
                 </div>
             </div>
@@ -195,13 +166,13 @@ const RevenueReport = ({ darkMode }) => {
                                         <td className="px-6 py-4 text-center min-w-[100px]">
                                             <div className="h-8 w-full">
                                                 <ResponsiveContainer width="100%" height="100%">
-                                                    <LineChart data={generateTrend()}>
-                                                        <Line 
-                                                            type="monotone" 
-                                                            dataKey="value" 
-                                                            stroke={op.position < 15 ? '#10b981' : '#6366f1'} 
-                                                            strokeWidth={2} 
-                                                            dot={false} 
+                                                    <LineChart data={generateTrend(op.position)}>
+                                                        <Line
+                                                            type="monotone"
+                                                            dataKey="value"
+                                                            stroke={op.position < 15 ? '#10b981' : '#6366f1'}
+                                                            strokeWidth={2}
+                                                            dot={false}
                                                             isAnimationActive={false}
                                                         />
                                                     </LineChart>
@@ -212,9 +183,9 @@ const RevenueReport = ({ darkMode }) => {
                                             <span className="font-mono text-xs text-gray-500">{op.impressions.toLocaleString()}</span>
                                         </td>
                                         <td className="px-6 py-4 text-right">
-                                            <a 
-                                                href={op.page} 
-                                                target="_blank" 
+                                            <a
+                                                href={op.page}
+                                                target="_blank"
                                                 rel="noopener noreferrer"
                                                 className={`p-2 inline-block rounded-xl hover:bg-indigo-500/10 transition-all ${darkMode ? 'text-gray-400 hover:text-indigo-400' : 'text-gray-400 hover:text-indigo-600'}`}
                                             >

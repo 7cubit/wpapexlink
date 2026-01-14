@@ -3,107 +3,126 @@
 namespace ApexLink\WP\Integrations\Google;
 
 /**
- * Manages Google Search Console integration.
+ * Manages Google Search Console integration via ApexLink Cloud OAuth proxy.
  */
-class GSCManager {
+class GSCManager
+{
 
-    private const CLIENT_ID_OPTION = 'apexlink_gsc_client_id';
-    private const CLIENT_SECRET_OPTION = 'apexlink_gsc_client_secret';
     private const TOKEN_OPTION = 'apexlink_gsc_tokens';
     private const TRANSIENT_KEY = 'apexlink_gsc_performance_data';
+    private const CLOUD_BASE_URL = 'https://apexlink-cloud.7cubit.workers.dev';
 
     /**
-     * Get the OAuth authorization URL.
+     * Get the OAuth initialization URL (redirects to Cloud proxy).
      */
-    public function get_auth_url() {
-        $client_id = get_option(self::CLIENT_ID_OPTION);
-        $redirect_uri = admin_url('admin.php?page=apexlink&path=/revenue-report');
-
-        if (!$client_id) {
-            return '';
-        }
+    public function get_connect_url(): string
+    {
+        $site_url = get_site_url();
+        $return_url = admin_url('admin.php?page=wp-apexlink#/settings');
 
         $params = [
-            'client_id' => $client_id,
-            'redirect_uri' => $redirect_uri,
-            'response_type' => 'code',
-            'scope' => 'https://www.googleapis.com/auth/webmasters.readonly',
-            'access_type' => 'offline',
-            'prompt' => 'consent'
+            'site_url' => $site_url,
+            'return_url' => $return_url,
         ];
 
-        return 'https://accounts.google.com/o/oauth2/v2/auth?' . http_build_query($params);
+        return self::CLOUD_BASE_URL . '/oauth/google/init?' . http_build_query($params);
     }
 
     /**
-     * Exchange authorization code for tokens.
+     * Handle callback from cloud proxy with encrypted tokens.
      */
-    public function exchange_code($code) {
-        $client_id = get_option(self::CLIENT_ID_OPTION);
-        $client_secret = get_option(self::CLIENT_SECRET_OPTION);
-        $redirect_uri = admin_url('admin.php?page=apexlink&path=/revenue-report');
-
-        $response = wp_remote_post('https://oauth2.googleapis.com/token', [
-            'body' => [
-                'code' => $code,
-                'client_id' => $client_id,
-                'client_secret' => $client_secret,
-                'redirect_uri' => $redirect_uri,
-                'grant_type' => 'authorization_code',
-            ]
-        ]);
-
-        if (is_wp_error($response)) {
-            return $response;
+    public function handle_cloud_callback(string $token_data): bool
+    {
+        if (empty($token_data)) {
+            error_log('WP ApexLink GSC: Callback received with empty token_data.');
+            return false;
         }
 
-        $data = json_decode(wp_remote_retrieve_body($response), true);
-        if (isset($data['access_token'])) {
-            $data['expires_at'] = time() + $data['expires_in'];
-            update_option(self::TOKEN_OPTION, $data);
-            return true;
+        // Decode the token data from cloud
+        $decoded = base64_decode($token_data, true);
+        if ($decoded === false) {
+            error_log('WP ApexLink GSC: Failed to base64 decode token_data.');
+            return false;
         }
 
-        return false;
+        $data = json_decode($decoded, true);
+
+        if (!$data || !isset($data['access_token'])) {
+            error_log('WP ApexLink GSC: Invalid JSON or missing access_token in decoded data. Data: ' . print_r($data, true));
+            return false;
+        }
+
+        // Set expiry time
+        $data['expires_at'] = time() + ($data['expires_in'] ?? 3600);
+
+        update_option(self::TOKEN_OPTION, $data);
+        error_log('WP ApexLink GSC: Successfully updated GSC tokens.');
+        return true;
     }
 
     /**
-     * Get a valid access token, refreshing if necessary.
+     * Check if GSC is connected.
      */
-    public function get_access_token() {
+    public function is_connected(): bool
+    {
         $tokens = get_option(self::TOKEN_OPTION);
-        if (!$tokens) return false;
+        return !empty($tokens) && isset($tokens['access_token']);
+    }
 
-        if (time() > $tokens['expires_at'] - 60) {
-            return $this->refresh_token($tokens['refresh_token']);
+    /**
+     * Disconnect GSC.
+     */
+    public function disconnect(): void
+    {
+        delete_option(self::TOKEN_OPTION);
+        delete_transient(self::TRANSIENT_KEY);
+    }
+
+    /**
+     * Get a valid access token, refreshing via Cloud proxy if necessary.
+     */
+    public function get_access_token()
+    {
+        $tokens = get_option(self::TOKEN_OPTION);
+        if (!$tokens || !isset($tokens['access_token'])) {
+            return false;
+        }
+
+        // Check if token is expired
+        if (isset($tokens['expires_at']) && time() > $tokens['expires_at'] - 60) {
+            return $this->refresh_token_via_cloud($tokens['refresh_token'] ?? '');
         }
 
         return $tokens['access_token'];
     }
 
     /**
-     * Refresh the access token.
+     * Refresh the access token via Cloud proxy.
      */
-    private function refresh_token($refresh_token) {
-        $client_id = get_option(self::CLIENT_ID_OPTION);
-        $client_secret = get_option(self::CLIENT_SECRET_OPTION);
+    private function refresh_token_via_cloud(string $refresh_token)
+    {
+        if (empty($refresh_token)) {
+            return false;
+        }
 
-        $response = wp_remote_post('https://oauth2.googleapis.com/token', [
-            'body' => [
+        $response = wp_remote_post(self::CLOUD_BASE_URL . '/oauth/google/refresh', [
+            'body' => json_encode([
                 'refresh_token' => $refresh_token,
-                'client_id' => $client_id,
-                'client_secret' => $client_secret,
-                'grant_type' => 'refresh_token',
-            ]
+                'site_url' => get_site_url(),
+            ]),
+            'headers' => ['Content-Type' => 'application/json'],
+            'timeout' => 15,
         ]);
 
-        if (is_wp_error($response)) return false;
+        if (is_wp_error($response)) {
+            return false;
+        }
 
         $data = json_decode(wp_remote_retrieve_body($response), true);
         if (isset($data['access_token'])) {
             $tokens = get_option(self::TOKEN_OPTION);
             $tokens['access_token'] = $data['access_token'];
-            $tokens['expires_at'] = time() + $data['expires_in'];
+            $tokens['expires_at'] = time() + ($data['expires_in'] ?? 3600);
             update_option(self::TOKEN_OPTION, $tokens);
             return $data['access_token'];
         }
@@ -114,9 +133,11 @@ class GSCManager {
     /**
      * Fetch performance data from GSC.
      */
-    public function fetch_performance_data() {
+    public function fetch_performance_data()
+    {
         $token = $this->get_access_token();
-        if (!$token) return false;
+        if (!$token)
+            return false;
 
         $site_url = get_site_url();
         $api_url = 'https://www.googleapis.com/webmasters/v3/sites/' . urlencode($site_url) . '/searchAnalytics/query';
@@ -136,7 +157,8 @@ class GSCManager {
             'body' => json_encode($body)
         ]);
 
-        if (is_wp_error($response)) return $response;
+        if (is_wp_error($response))
+            return $response;
 
         $data = json_decode(wp_remote_retrieve_body($response), true);
         if (isset($data['rows'])) {
@@ -150,13 +172,15 @@ class GSCManager {
     /**
      * Identify "Striking Distance" opportunities.
      */
-    public function get_striking_distance_opportunities() {
+    public function get_striking_distance_opportunities()
+    {
         $data = get_transient(self::TRANSIENT_KEY);
         if (!$data) {
             $data = $this->fetch_performance_data();
         }
 
-        if (!$data || !is_array($data)) return [];
+        if (!$data || !is_array($data))
+            return [];
 
         $opportunities = [];
         foreach ($data as $row) {
@@ -176,3 +200,4 @@ class GSCManager {
         return $opportunities;
     }
 }
+

@@ -63,6 +63,44 @@ const AppRouter = () => {
         localStorage.setItem('apexlink_dark_mode', darkMode);
     }, [darkMode]);
 
+    // Handle GSC callback globally
+    useEffect(() => {
+        const handleGSCCallback = async () => {
+            const hash = window.location.hash;
+            if (hash.includes('gsc_callback=1')) {
+                const params = new URLSearchParams(hash.split('?')[1]);
+                const tokenData = params.get('token_data');
+
+                if (tokenData) {
+                    const loadingToast = toast.loading(__('Completing Google connection...', 'wp-apexlink'));
+                    try {
+                        const res = await fetch(`${baseUrl}/gsc/callback`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-WP-Nonce': window.wpApexLinkData?.nonce
+                            },
+                            body: JSON.stringify({ token_data: tokenData })
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            toast.success(__('Successfully connected to Google Search Console!', 'wp-apexlink'), { id: loadingToast });
+                            // Force refresh settings to update UI across all components
+                            window.location.hash = '#/settings';
+                            setTimeout(() => window.location.reload(), 500);
+                        } else {
+                            toast.error(data.message || __('Failed to connect GSC.', 'wp-apexlink'), { id: loadingToast });
+                        }
+                    } catch (e) {
+                        toast.error(__('An error occurred during GSC callback.', 'wp-apexlink'), { id: loadingToast });
+                    }
+                }
+            }
+        };
+
+        handleGSCCallback();
+    }, [baseUrl]);
+
     if (licenseLoading || settingsLoading) {
         return (
             <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
@@ -96,8 +134,8 @@ const AppRouter = () => {
                 { name: __('Revenue', 'wp-apexlink'), path: '/revenue-report', icon: TrendingUp },
                 { name: __('Visual Graph', 'wp-apexlink'), path: '/visual-graph', icon: Share2 },
                 { name: __('Anchor Cloud', 'wp-apexlink'), path: '/anchor-cloud', icon: Cloud },
-                ...(license?.tier === 'agency' || license?.tier === 'enterprise' 
-                    ? [{ name: __('Agency', 'wp-apexlink'), path: '/agency', icon: ShieldCheck }] 
+                ...(license?.tier === 'agency' || license?.tier === 'enterprise'
+                    ? [{ name: __('Agency', 'wp-apexlink'), path: '/agency', icon: ShieldCheck }]
                     : []
                 ),
             ]
@@ -111,20 +149,35 @@ const AppRouter = () => {
     const renderNavDropdown = (group, groupKey) => {
         const GroupIcon = group.icon;
         const isOpen = openDropdown === groupKey;
-        
+        let closeTimeout = null;
+
+        const handleMouseEnter = () => {
+            if (closeTimeout) {
+                clearTimeout(closeTimeout);
+                closeTimeout = null;
+            }
+            setOpenDropdown(groupKey);
+        };
+
+        const handleMouseLeave = () => {
+            closeTimeout = setTimeout(() => {
+                setOpenDropdown(null);
+            }, 150); // Small delay to allow click events to process
+        };
+
         return (
-            <div 
+            <div
                 key={groupKey}
                 className="relative"
-                onMouseEnter={() => setOpenDropdown(groupKey)}
-                onMouseLeave={() => setOpenDropdown(null)}
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
             >
                 <button
-                    className={`flex items-center px-3 py-2 text-sm font-medium transition-colors rounded-lg ${
-                        isOpen 
-                            ? 'text-neuro-brain bg-neuro-brain/10' 
+                    onClick={() => setOpenDropdown(isOpen ? null : groupKey)}
+                    className={`flex items-center px-3 py-2 text-sm font-medium transition-colors rounded-lg ${isOpen
+                            ? 'text-neuro-brain bg-neuro-brain/10'
                             : darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'
-                    }`}
+                        }`}
                 >
                     <GroupIcon className="w-4 h-4 mr-2" />
                     {group.label}
@@ -132,11 +185,10 @@ const AppRouter = () => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                 </button>
-                
+
                 {isOpen && (
-                    <div className={`absolute top-full left-0 mt-1 w-48 rounded-xl shadow-xl border z-50 animate-in fade-in zoom-in-95 duration-200 ${
-                        darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'
-                    }`}>
+                    <div className={`absolute top-full left-0 mt-1 w-48 rounded-xl shadow-xl border z-50 animate-in fade-in zoom-in-95 duration-200 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'
+                        }`}>
                         <div className="py-2">
                             {group.items.map((item) => {
                                 const ItemIcon = item.icon;
@@ -144,14 +196,16 @@ const AppRouter = () => {
                                     <NavLink
                                         key={item.path}
                                         to={item.path}
-                                        onClick={() => setOpenDropdown(null)}
+                                        onClick={() => {
+                                            if (closeTimeout) clearTimeout(closeTimeout);
+                                            setOpenDropdown(null);
+                                        }}
                                         className={({ isActive }) =>
-                                            `flex items-center px-4 py-2 text-sm transition-colors ${
-                                                isActive 
-                                                    ? 'text-neuro-brain bg-neuro-brain/10 font-bold' 
-                                                    : darkMode 
-                                                        ? 'text-gray-300 hover:bg-gray-700' 
-                                                        : 'text-gray-600 hover:bg-gray-50'
+                                            `flex items-center px-4 py-2 text-sm transition-colors ${isActive
+                                                ? 'text-neuro-brain bg-neuro-brain/10 font-bold'
+                                                : darkMode
+                                                    ? 'text-gray-300 hover:bg-gray-700'
+                                                    : 'text-gray-600 hover:bg-gray-50'
                                             }`
                                         }
                                     >
@@ -167,119 +221,118 @@ const AppRouter = () => {
         );
     };
 
+
     return (
-            <HashRouter>
-                <div className={`min-h-screen flex flex-col transition-colors duration-300 ${darkMode ? 'dark bg-gray-900 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
-                    {showSetup && <SetupWizard darkMode={darkMode} onComplete={() => setShowSetup(false)} />}
-                    {/* Header */}
-                    <header className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b sticky top-0 z-30`}>
-                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                            <div className="flex justify-between h-16 items-center">
-                                <div className="flex items-center">
-                                    {!isWhiteLabel && <Brain className="h-8 w-8 text-neuro-brain mr-3" />}
-                                    <h1 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{isWhiteLabel ? __('Dashboard', 'wp-apexlink') : __('WP ApexLink', 'wp-apexlink')}</h1>
-                                </div>
-                                {isActive && (
-                                    <nav className="flex items-center space-x-2">
-                                        {navGroups.primary.map((item) => {
-                                            const ItemIcon = item.icon;
-                                            return (
-                                                <NavLink
-                                                    key={item.path}
-                                                    to={item.path}
-                                                    className={({ isActive }) =>
-                                                        `flex items-center px-3 py-2 text-sm font-medium transition-colors rounded-lg ${
-                                                            isActive 
-                                                                ? 'text-neuro-brain bg-neuro-brain/10' 
-                                                                : darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'
-                                                        }`
-                                                    }
-                                                >
-                                                    <ItemIcon className="w-4 h-4 mr-2" />
-                                                    {item.name}
-                                                </NavLink>
-                                            );
-                                        })}
+        <HashRouter>
+            <div className={`min-h-screen flex flex-col transition-colors duration-300 ${darkMode ? 'dark bg-gray-900 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
+                {showSetup && <SetupWizard darkMode={darkMode} onComplete={() => setShowSetup(false)} />}
+                {/* Header */}
+                <header className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-b sticky top-0 z-30`}>
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                        <div className="flex justify-between h-16 items-center">
+                            <div className="flex items-center">
+                                {!isWhiteLabel && <Brain className="h-8 w-8 text-neuro-brain mr-3" />}
+                                <h1 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{isWhiteLabel ? __('Dashboard', 'wp-apexlink') : __('WP ApexLink', 'wp-apexlink')}</h1>
+                            </div>
+                            {isActive && (
+                                <nav className="flex items-center space-x-2">
+                                    {navGroups.primary.map((item) => {
+                                        const ItemIcon = item.icon;
+                                        return (
+                                            <NavLink
+                                                key={item.path}
+                                                to={item.path}
+                                                className={({ isActive }) =>
+                                                    `flex items-center px-3 py-2 text-sm font-medium transition-colors rounded-lg ${isActive
+                                                        ? 'text-neuro-brain bg-neuro-brain/10'
+                                                        : darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'
+                                                    }`
+                                                }
+                                            >
+                                                <ItemIcon className="w-4 h-4 mr-2" />
+                                                {item.name}
+                                            </NavLink>
+                                        );
+                                    })}
 
-                                        {renderNavDropdown(navGroups.tools, 'tools')}
-                                        {renderNavDropdown(navGroups.analytics, 'analytics')}
+                                    {renderNavDropdown(navGroups.tools, 'tools')}
+                                    {renderNavDropdown(navGroups.analytics, 'analytics')}
 
-                                        {(() => {
-                                            const item = navGroups.settings;
-                                            const ItemIcon = item.icon;
-                                            return (
-                                                <NavLink
-                                                    key={item.path}
-                                                    to={item.path}
-                                                    className={({ isActive }) =>
-                                                        `flex items-center px-3 py-2 text-sm font-medium transition-colors rounded-lg ${
-                                                            isActive 
-                                                                ? 'text-neuro-brain bg-neuro-brain/10' 
-                                                                : darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'
-                                                        }`
-                                                    }
-                                                >
-                                                    <ItemIcon className="w-4 h-4 mr-2" />
-                                                    {item.name}
-                                                </NavLink>
-                                            );
-                                        })()}
-                                    </nav>
-                                )}
+                                    {(() => {
+                                        const item = navGroups.settings;
+                                        const ItemIcon = item.icon;
+                                        return (
+                                            <NavLink
+                                                key={item.path}
+                                                to={item.path}
+                                                className={({ isActive }) =>
+                                                    `flex items-center px-3 py-2 text-sm font-medium transition-colors rounded-lg ${isActive
+                                                        ? 'text-neuro-brain bg-neuro-brain/10'
+                                                        : darkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-700'
+                                                    }`
+                                                }
+                                            >
+                                                <ItemIcon className="w-4 h-4 mr-2" />
+                                                {item.name}
+                                            </NavLink>
+                                        );
+                                    })()}
+                                </nav>
+                            )}
 
-                                {/* Header Actions */}
-                                <div className="flex items-center space-x-4">
-                                    <button
-                                        onClick={() => setDarkMode(!darkMode)}
-                                        className={`p-2 rounded-lg transition-all ${darkMode ? 'bg-gray-700 text-yellow-400 hover:bg-gray-600' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-                                        title={darkMode ? __('Switch to Light Mode', 'wp-apexlink') : __('Switch to Dark Mode', 'wp-apexlink')}
-                                    >
-                                        {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-                                    </button>
-                                </div>
+                            {/* Header Actions */}
+                            <div className="flex items-center space-x-4">
+                                <button
+                                    onClick={() => setDarkMode(!darkMode)}
+                                    className={`p-2 rounded-lg transition-all ${darkMode ? 'bg-gray-700 text-yellow-400 hover:bg-gray-600' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                                    title={darkMode ? __('Switch to Light Mode', 'wp-apexlink') : __('Switch to Dark Mode', 'wp-apexlink')}
+                                >
+                                    {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                                </button>
                             </div>
                         </div>
-                    </header>
+                    </div>
+                </header>
 
 
 
 
-                    {/* Content */}
-                    <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
-                        {!isActive ? (
-                            <ActivateLicense onActivate={() => refetchLicense()} darkMode={darkMode} />
-                        ) : (
-                            <ErrorBoundary darkMode={darkMode}>
-                                <Suspense fallback={
-                                    <div className="flex items-center justify-center h-96">
-                                        <Loader2 className="w-8 h-8 animate-spin text-neuro-brain" />
-                                    </div>
-                                }>
-                                    <Routes>
-                                        <Route path="/" element={<Overview darkMode={darkMode} />} />
-                                        <Route path="/orphans" element={<Orphans darkMode={darkMode} />} />
-                                        <Route path="/suggestions" element={<Suggestions darkMode={darkMode} />} />
-                                        <Route path="/autopilot" element={<Autopilot darkMode={darkMode} />} />
-                                        <Route path="/revenue-report" element={<RevenueReport darkMode={darkMode} />} />
-                                        <Route path="/anchor-cloud" element={<AnchorCloud darkMode={darkMode} />} />
-                                        <Route path="/magnet" element={<MagnetTool darkMode={darkMode} />} />
-                                        <Route path="/integrations" element={<Integrations darkMode={darkMode} />} />
-                                        <Route path="/reports" element={<Reports darkMode={darkMode} />} />
-                                        <Route path="/visual-graph" element={<VisualGraph darkMode={darkMode} />} />
-                                        <Route path="/agency" element={<AgencyDashboard darkMode={darkMode} />} />
-                                        <Route path="/settings" element={<Settings darkMode={darkMode} setDarkMode={setDarkMode} readOnly={isReadOnly} />} />
-                                    </Routes>
-                                </Suspense>
-                                <ReviewPrompt />
-                            </ErrorBoundary>
-                        )}
-                    </main>
+                {/* Content */}
+                <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+                    {!isActive ? (
+                        <ActivateLicense onActivate={() => refetchLicense()} darkMode={darkMode} />
+                    ) : (
+                        <ErrorBoundary darkMode={darkMode}>
+                            <Suspense fallback={
+                                <div className="flex items-center justify-center h-96">
+                                    <Loader2 className="w-8 h-8 animate-spin text-neuro-brain" />
+                                </div>
+                            }>
+                                <Routes>
+                                    <Route path="/" element={<Overview darkMode={darkMode} />} />
+                                    <Route path="/orphans" element={<Orphans darkMode={darkMode} />} />
+                                    <Route path="/suggestions" element={<Suggestions darkMode={darkMode} />} />
+                                    <Route path="/autopilot" element={<Autopilot darkMode={darkMode} />} />
+                                    <Route path="/revenue-report" element={<RevenueReport darkMode={darkMode} />} />
+                                    <Route path="/anchor-cloud" element={<AnchorCloud darkMode={darkMode} />} />
+                                    <Route path="/magnet" element={<MagnetTool darkMode={darkMode} />} />
+                                    <Route path="/integrations" element={<Integrations darkMode={darkMode} />} />
+                                    <Route path="/reports" element={<Reports darkMode={darkMode} />} />
+                                    <Route path="/visual-graph" element={<VisualGraph darkMode={darkMode} />} />
+                                    <Route path="/agency" element={<AgencyDashboard darkMode={darkMode} />} />
+                                    <Route path="/settings" element={<Settings darkMode={darkMode} setDarkMode={setDarkMode} readOnly={isReadOnly} />} />
+                                </Routes>
+                            </Suspense>
+                            <ReviewPrompt />
+                        </ErrorBoundary>
+                    )}
+                </main>
 
-                    <Toaster position="bottom-right" />
-                    <HelpBeacon darkMode={darkMode} />
-                    <TourProvider darkMode={darkMode} />
-                </div>
-            </HashRouter>
+                <Toaster position="bottom-right" />
+                <HelpBeacon darkMode={darkMode} />
+                <TourProvider darkMode={darkMode} />
+            </div>
+        </HashRouter>
     );
 };
 

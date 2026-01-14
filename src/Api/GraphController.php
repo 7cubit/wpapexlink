@@ -116,6 +116,12 @@ class GraphController
             'permission_callback' => [$this, 'check_permission'],
         ]);
 
+        register_rest_route(self::REST_NAMESPACE, '/graph/connections', [
+            'methods' => 'GET',
+            'callback' => [$this, 'get_post_connections'],
+            'permission_callback' => [$this, 'check_permission'],
+        ]);
+
         register_rest_route(self::REST_NAMESPACE, '/autopilot/rules', [
             'methods' => 'GET',
             'callback' => [$this, 'get_autopilot_rules'],
@@ -146,15 +152,21 @@ class GraphController
             'permission_callback' => [$this, 'check_permission'],
         ]);
 
-        register_rest_route(self::REST_NAMESPACE, '/gsc/auth-url', [
+        register_rest_route(self::REST_NAMESPACE, '/gsc/connect-url', [
             'methods' => 'GET',
-            'callback' => [$this, 'get_gsc_auth_url'],
+            'callback' => [$this, 'get_gsc_connect_url'],
             'permission_callback' => [$this, 'check_permission'],
         ]);
 
-        register_rest_route(self::REST_NAMESPACE, '/gsc/exchange-code', [
+        register_rest_route(self::REST_NAMESPACE, '/gsc/callback', [
             'methods' => 'POST',
-            'callback' => [$this, 'exchange_gsc_code'],
+            'callback' => [$this, 'handle_gsc_callback'],
+            'permission_callback' => [$this, 'check_permission'],
+        ]);
+
+        register_rest_route(self::REST_NAMESPACE, '/gsc/disconnect', [
+            'methods' => 'POST',
+            'callback' => [$this, 'disconnect_gsc'],
             'permission_callback' => [$this, 'check_permission'],
         ]);
 
@@ -209,6 +221,18 @@ class GraphController
         register_rest_route(self::REST_NAMESPACE, '/reports/export/csv', [
             'methods' => 'GET',
             'callback' => [$this, 'export_links_csv'],
+            'permission_callback' => [$this, 'check_permission'],
+        ]);
+
+        register_rest_route(self::REST_NAMESPACE, '/reports/rescue-progress', [
+            'methods' => 'GET',
+            'callback' => [$this, 'get_rescue_progress'],
+            'permission_callback' => [$this, 'check_permission'],
+        ]);
+
+        register_rest_route(self::REST_NAMESPACE, '/reports/top-assets', [
+            'methods' => 'GET',
+            'callback' => [$this, 'get_top_assets'],
             'permission_callback' => [$this, 'check_permission'],
         ]);
 
@@ -719,12 +743,18 @@ class GraphController
     public function activate_license($request)
     {
         $key = sanitize_text_field($request->get_param('license_key'));
+        $email = sanitize_email($request->get_param('email'));
+
         if (empty($key)) {
             return new \WP_Error('missing_key', 'License key is required.', ['status' => 400]);
         }
 
+        if (empty($email)) {
+            return new \WP_Error('missing_email', 'Email address is required.', ['status' => 400]);
+        }
+
         $license_manager = new LicenseManager();
-        $result = $license_manager->activate($key);
+        $result = $license_manager->activate($key, $email);
 
         return rest_ensure_response($result);
     }
@@ -1196,6 +1226,58 @@ class GraphController
     }
 
     /**
+     * Get connections (inbound and outbound links) for a specific post.
+     *
+     * @param \WP_REST_Request $request
+     * @return \WP_REST_Response
+     */
+    public function get_post_connections($request)
+    {
+        $post_id = absint($request->get_param('post_id'));
+
+        if (!$post_id) {
+            return new \WP_Error('missing_post_id', __('Post ID is required.', 'wp-apexlink'), ['status' => 400]);
+        }
+
+        global $wpdb;
+        $link_table = $wpdb->prefix . 'apexlink_links';
+
+        // Get outbound links (links FROM this post)
+        $outbound = $wpdb->get_results($wpdb->prepare(
+            "SELECT l.target_id, l.anchor, p.post_title as title, p.guid as url
+             FROM {$link_table} l
+             LEFT JOIN {$wpdb->posts} p ON l.target_id = p.ID
+             WHERE l.source_id = %d AND l.link_type = 'internal' AND l.target_id != 0
+             ORDER BY l.created_at DESC",
+            $post_id
+        ));
+
+        // Get inbound links (links TO this post)
+        $inbound = $wpdb->get_results($wpdb->prepare(
+            "SELECT l.source_id, l.anchor, p.post_title as title, p.guid as url
+             FROM {$link_table} l
+             LEFT JOIN {$wpdb->posts} p ON l.source_id = p.ID
+             WHERE l.target_id = %d AND l.link_type = 'internal'
+             ORDER BY l.created_at DESC",
+            $post_id
+        ));
+
+        // Add permalinks
+        foreach ($outbound as $link) {
+            $link->url = $link->target_id ? get_permalink($link->target_id) : $link->url;
+        }
+        foreach ($inbound as $link) {
+            $link->url = $link->source_id ? get_permalink($link->source_id) : $link->url;
+        }
+
+        return rest_ensure_response([
+            'post_id' => $post_id,
+            'outbound' => $outbound,
+            'inbound' => $inbound
+        ]);
+    }
+
+    /**
      * Get all autopilot rules.
      */
     public function get_autopilot_rules()
@@ -1324,33 +1406,44 @@ class GraphController
     }
 
     /**
-     * Get the GSC Auth URL.
+     * Get the GSC Connect URL (Cloud OAuth Proxy).
      */
-    public function get_gsc_auth_url()
+    public function get_gsc_connect_url()
     {
         $manager = new \ApexLink\WP\Integrations\Google\GSCManager();
-        return rest_ensure_response(['url' => $manager->get_auth_url()]);
+        return rest_ensure_response(['url' => $manager->get_connect_url()]);
     }
 
     /**
-     * Exchange GSC code for tokens.
+     * Handle GSC callback from cloud proxy.
      */
-    public function exchange_gsc_code($request)
+    public function handle_gsc_callback($request)
     {
         $params = $request->get_json_params();
-        $code = $params['code'] ?? '';
-        if (!$code) {
-            return new \WP_Error('missing_code', 'Authorization code is required.', ['status' => 400]);
+        $token_data = $params['token_data'] ?? '';
+
+        if (empty($token_data)) {
+            return new \WP_Error('missing_token_data', 'Token data is required.', ['status' => 400]);
         }
 
         $manager = new \ApexLink\WP\Integrations\Google\GSCManager();
-        $result = $manager->exchange_code($code);
+        $result = $manager->handle_cloud_callback($token_data);
 
-        if (is_wp_error($result)) {
-            return $result;
+        if (!$result) {
+            return new \WP_Error('callback_failed', 'Failed to process callback.', ['status' => 400]);
         }
 
-        return rest_ensure_response(['success' => $result]);
+        return rest_ensure_response(['success' => true, 'connected' => true]);
+    }
+
+    /**
+     * Disconnect GSC.
+     */
+    public function disconnect_gsc()
+    {
+        $manager = new \ApexLink\WP\Integrations\Google\GSCManager();
+        $manager->disconnect();
+        return rest_ensure_response(['success' => true, 'connected' => false]);
     }
 
     /**
@@ -1590,6 +1683,61 @@ class GraphController
     }
 
     /**
+     * Get orphan rescue progress.
+     */
+    public function get_rescue_progress($request)
+    {
+        global $wpdb;
+
+        $index_table = $wpdb->prefix . 'apexlink_index';
+        $link_table = $wpdb->prefix . 'apexlink_links';
+
+        // Get total posts
+        $total_posts = $wpdb->get_var(
+            "SELECT COUNT(*) FROM {$wpdb->posts} 
+             WHERE post_type IN ('post', 'page') 
+             AND post_status = 'publish'"
+        );
+
+        // Get posts with at least one inbound link
+        $linked_posts = $wpdb->get_var(
+            "SELECT COUNT(DISTINCT target_id) FROM {$link_table}"
+        );
+
+        $percentage = $total_posts > 0 ? round(($linked_posts / $total_posts) * 100) : 0;
+
+        return rest_ensure_response([
+            'percentage' => min($percentage, 100),
+            'count' => (int) $linked_posts
+        ]);
+    }
+
+    /**
+     * Get top linked assets.
+     */
+    public function get_top_assets($request)
+    {
+        global $wpdb;
+
+        $link_table = $wpdb->prefix . 'apexlink_links';
+
+        $results = $wpdb->get_results(
+            "SELECT 
+                l.target_id as id,
+                p.post_title as title,
+                COUNT(*) as inbound_count
+             FROM {$link_table} l
+             JOIN {$wpdb->posts} p ON l.target_id = p.ID
+             WHERE p.post_status = 'publish'
+             GROUP BY l.target_id
+             ORDER BY inbound_count DESC
+             LIMIT 10"
+        );
+
+        return rest_ensure_response($results ?: []);
+    }
+
+    /**
      * Get integration status report.
      */
     public function get_integrations_status($request)
@@ -1636,6 +1784,13 @@ class GraphController
                 'detected' => defined('ET_CORE_VERSION'),
                 'supported' => true,
                 'description' => __('Shortcode expansion and layout parsing for Elegant Themes.', 'wp-apexlink')
+            ],
+            [
+                'id' => 'metabox',
+                'name' => 'Meta Box',
+                'detected' => class_exists('RWMB_Loader') || defined('RWMB_VER'),
+                'supported' => true,
+                'description' => __('Parses custom fields and custom post types from Meta Box plugin.', 'wp-apexlink')
             ]
         ];
 
